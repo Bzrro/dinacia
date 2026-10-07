@@ -1,0 +1,1933 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>DINACIA — Mapa</title>
+<meta name="theme-color" content="#0d2b4e">
+<meta name="apple-mobile-web-app-title" content="DINACIA">
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+<style>
+  :root {
+    --azul-osc: #0d2b4e;
+    --azul: #1b4f8c;
+    --azul-med: #2e6db4;
+    --azul-claro: #eaf2fb;
+    --acento: #ffcc33;
+    --panel: #ffffff;
+    --ink: #10233c;
+    --ink-soft: #5c7291;
+    --line: #d7e3f2;
+    --shadow: 0 10px 28px rgba(13, 43, 78, 0.22);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    background: var(--azul-osc);
+    color: var(--ink);
+    overflow: hidden;
+  }
+  #map { position: absolute; inset: 0; z-index: 0; }
+
+  /* Tinte azulado sobre las tiles */
+  .leaflet-tile-pane { filter: grayscale(0.35) sepia(0.35) hue-rotate(175deg) saturate(1.7) brightness(1.05); }
+
+  .topbar {
+    position: absolute; top: 0; left: 0; right: 0; z-index: 500;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 16px 10px;
+    background: linear-gradient(180deg, rgba(13,43,78,0.92), rgba(13,43,78,0));
+    pointer-events: none;
+  }
+  .topbar * { pointer-events: auto; }
+  .brand {
+    color: #fff; font-weight: 700; font-size: 1rem;
+    display: flex; align-items: center; gap: 8px;
+    text-shadow: 0 2px 6px rgba(0,0,0,0.3);
+  }
+  .brand .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--acento); box-shadow: 0 0 0 4px rgba(255,204,51,0.25); }
+
+  .brand .dot.vfr { background: #3ddc84; box-shadow: 0 0 0 4px rgba(61,220,132,0.25); }
+  .brand .dot.mvfr { background: #4aa3ff; box-shadow: 0 0 0 4px rgba(74,163,255,0.25); }
+  .brand .dot.ifr { background: #ff4d4d; box-shadow: 0 0 0 4px rgba(255,77,77,0.25); }
+  .brand .dot.lifr { background: #e040fb; box-shadow: 0 0 0 4px rgba(224,64,251,0.25); }
+  #metarChip { display: none; background: rgba(255,255,255,0.18); border: 1px solid rgba(255,255,255,0.35); color: #fff; font: 600 0.72rem/1 inherit; font-family: inherit; padding: 6px 10px; border-radius: 999px; cursor: pointer; text-shadow: none; white-space: nowrap; }
+  #metarChip.show { display: inline-block; }
+  #metarPanel { position: fixed; top: 58px; left: 12px; z-index: 1200; max-width: min(320px, calc(100vw - 24px)); background: var(--panel); color: var(--ink); border-radius: 14px; padding: 12px 14px; box-shadow: 0 6px 24px rgba(0,0,0,0.25); display: none; font-size: 0.82rem; line-height: 1.4; }
+  #metarPanel.show { display: block; }
+  #metarPanel h4 { margin: 0 0 6px; font-size: 0.9rem; color: var(--azul-osc); }
+  #metarPanel .raw { font-family: ui-monospace, Menlo, monospace; font-size: 0.74rem; background: var(--azul-claro); border-radius: 8px; padding: 6px 8px; margin-top: 8px; word-break: break-word; }
+  #metarPanel .sub { color: var(--ink-soft); font-size: 0.72rem; margin-top: 6px; }
+  .topActions { display: flex; gap: 10px; }
+  #pistaBtn {
+    background: var(--panel);
+    border: none;
+    color: var(--azul-osc);
+    font-size: 1.3rem;
+    width: 46px; height: 46px;
+    border-radius: 50%;
+    box-shadow: var(--shadow);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    transition: transform 0.15s ease, background 0.15s ease, color 0.15s ease;
+  }
+  #pistaBtn.active {
+    background: var(--azul);
+    color: #fff;
+  }
+  #pistaBtn:active { transform: scale(0.92); }
+  #sombras { position: fixed; inset: 0; z-index: 400; pointer-events: none; overflow: hidden; }
+  .sombra { position: absolute; left: 0; top: 0; opacity: 0; will-change: transform, opacity; filter: blur(1.6px); }
+  .sombra svg { width: 100%; height: 100%; display: block; fill: #0d2b4e; }
+
+  #locateBtn {
+    position: absolute; z-index: 500; right: 14px; bottom: 28px;
+    width: 44px; height: 44px; border-radius: 50%; border: none;
+    background: var(--panel); box-shadow: var(--shadow);
+    font-size: 1.15rem; display: flex; align-items: center; justify-content: center;
+    cursor: pointer; color: var(--azul);
+    transition: bottom 0.28s ease;
+  }
+  #locateBtn.raised { bottom: calc(46vh + 16px); }
+
+  #accBadge {
+    position: absolute; z-index: 500; left: 14px; bottom: 28px;
+    background: rgba(13,43,78,0.85); color: #fff;
+    font-size: 0.72rem; font-weight: 600;
+    padding: 6px 11px; border-radius: 999px;
+    display: none; align-items: center; gap: 5px;
+    transition: bottom 0.28s ease;
+  }
+  #accBadge.show { display: flex; }
+  #accBadge.warn { background: rgba(196,90,20,0.9); }
+  #accBadge.raised { bottom: calc(46vh + 16px); }
+
+  /* Botón 📍: menú, globito de ayuda, aviso de interiores y mensajes */
+  #locMenu {
+    position: absolute; z-index: 520; right: 14px; bottom: 84px; width: min(78vw, 290px);
+    background: var(--panel); border-radius: 16px; box-shadow: var(--shadow); padding: 8px; display: none;
+    transition: bottom 0.28s ease;
+  }
+  #locMenu.show { display: block; }
+  #locMenu.raised { bottom: calc(46vh + 70px); }
+  #locMenu .t { font-size: 0.7rem; font-weight: 700; color: var(--azul-med); text-transform: uppercase; letter-spacing: 0.06em; padding: 6px 8px 4px; }
+  #locMenu button { display: flex; align-items: center; gap: 10px; width: 100%; border: none; background: transparent; padding: 11px 8px; border-radius: 10px; font-size: 0.88rem; color: var(--ink); text-align: left; cursor: pointer; line-height: 1.25; }
+  #locMenu button:active { background: var(--azul-claro); }
+  #locMenu button small { display: block; font-size: 0.72rem; color: var(--ink-soft); }
+  #locHint {
+    position: absolute; z-index: 510; right: 66px; bottom: 38px; background: rgba(13,43,78,0.92); color: #fff;
+    font-size: 0.76rem; font-weight: 600; padding: 7px 12px; border-radius: 12px; display: none; max-width: 52vw;
+    transition: bottom 0.28s ease, opacity 0.5s ease;
+  }
+  #locHint::after { content: ""; position: absolute; right: -6px; top: 50%; margin-top: -6px; border: 6px solid transparent; border-left-color: rgba(13,43,78,0.92); border-right: 0; }
+  #locHint.show { display: block; }
+  #locHint.raised { bottom: calc(46vh + 26px); }
+  .banner {
+    position: fixed; z-index: 530; left: 50%; transform: translateX(-50%); width: min(92vw, 420px);
+    background: rgba(13,43,78,0.96); color: #fff; border-radius: 16px; padding: 12px 14px; box-shadow: var(--shadow);
+    font-size: 0.84rem; line-height: 1.4; display: none;
+  }
+  .banner.show { display: block; }
+  .banner .acc { display: flex; gap: 8px; margin-top: 10px; }
+  .banner button { flex: 1; border: none; border-radius: 10px; padding: 9px 6px; font-weight: 700; font-size: 0.8rem; cursor: pointer; background: rgba(255,255,255,0.18); color: #fff; }
+  .banner button.main { background: #ffcc33; color: var(--azul-osc); }
+  #colocarBanner { top: 126px; }
+  #avisoInterior { bottom: 48px; background: #fff; color: var(--ink); border: 1px solid #f0c27a; }
+  #avisoInterior b { color: #b45a14; }
+  #avisoInterior button { background: var(--azul-claro); color: var(--azul); }
+  #avisoInterior button.main { background: var(--azul); color: #fff; }
+  #toastMsg {
+    position: fixed; z-index: 560; left: 50%; transform: translateX(-50%); bottom: 150px; max-width: 88vw;
+    background: rgba(13,43,78,0.94); color: #fff; font-size: 0.8rem; line-height: 1.4; padding: 10px 14px; border-radius: 14px;
+    box-shadow: var(--shadow); display: none; text-align: center;
+  }
+  #toastMsg.show { display: block; }
+  #map.colocando { cursor: crosshair; }
+  .tipPartida { background: #ffcc33; color: #0d2b4e; border: none; font-weight: 700; font-size: 0.72rem; box-shadow: var(--shadow); padding: 3px 8px; }
+  .tipPartida::before { border-top-color: #ffcc33 !important; }
+
+  .sheet {
+    display: none;
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 500;
+    background: var(--panel);
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 -8px 24px rgba(13,43,78,0.18);
+    max-height: 46vh;
+    display: flex; flex-direction: column;
+    transition: max-height 0.28s ease;
+  }
+  .sheet.collapsed { max-height: 64px; }
+  .sheet.collapsed .list { display: none; }
+  .sheet-handle {
+    width: 40px; height: 4px; border-radius: 2px; background: var(--line);
+    margin: 10px auto 6px;
+  }
+  .sheet-title {
+    padding: 0 18px 8px; font-size: 0.95rem; font-weight: 700; color: var(--azul-osc);
+    display: flex; align-items: center; justify-content: space-between;
+    cursor: pointer;
+  }
+  .sheet-title .chev {
+    font-size: 0.75rem; color: var(--ink-soft); margin-left: 8px;
+    transition: transform 0.28s ease;
+  }
+  .sheet.collapsed .sheet-title .chev { transform: rotate(180deg); }
+  .sheet-title span.mode {
+    font-size: 0.72rem; font-weight: 600; color: var(--azul-med);
+    background: var(--azul-claro); padding: 3px 9px; border-radius: 999px;
+  }
+  .list { overflow-y: auto; padding: 0 10px 14px; }
+  .poi {
+    display: flex; align-items: center; gap: 12px;
+    padding: 11px 10px; border-radius: 12px; cursor: pointer;
+    border: 1px solid transparent;
+  }
+  .poi:active { background: var(--azul-claro); }
+  .poi.selected { background: var(--azul-claro); border-color: var(--azul-med); }
+  .poi-ico {
+    width: 34px; height: 34px; border-radius: 10px;
+    background: var(--azul-claro); color: var(--azul);
+    display: flex; align-items: center; justify-content: center; font-size: 1.05rem;
+    flex-shrink: 0;
+  }
+  .poi.selected .poi-ico { background: var(--azul); color: #fff; }
+  .poi-txt { flex: 1; min-width: 0; }
+  .poi-name { font-size: 0.9rem; font-weight: 600; color: var(--ink); line-height: 1.25; }
+  .poi-sub { font-size: 0.76rem; color: var(--ink-soft); margin-top: 1px; }
+  .poi-dist { font-size: 0.74rem; color: var(--azul-med); font-weight: 600; white-space: nowrap; }
+
+  .leaflet-popup-content-wrapper { border-radius: 12px; }
+  .leaflet-popup-content { font-size: 0.85rem; color: var(--ink); }
+
+  .divicon-user {
+    width: 18px; height: 18px; border-radius: 50%;
+    background: var(--azul-med); border: 3px solid #fff;
+    box-shadow: 0 0 0 6px rgba(46,109,180,0.25), 0 2px 6px rgba(0,0,0,0.3);
+  }
+  .divicon-user.plane {
+    width: 30px; height: 30px; border-radius: 50%;
+    background: var(--acento); border: none;
+    box-shadow: 0 0 0 7px rgba(255,204,51,0.28), 0 3px 8px rgba(0,0,0,0.35);
+    display: flex; align-items: center; justify-content: center; font-size: 15px;
+  }
+  .divicon-poi {
+    background: var(--azul); color: #fff; box-shadow: 0 3px 8px rgba(13,43,78,0.35);
+    padding: 4px 8px; border-radius: 8px; position: relative;
+    font-size: 10.5px; font-weight: 700; white-space: nowrap; text-align: center;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .divicon-poi::after {
+    content: ""; position: absolute; left: 50%; bottom: -6px; transform: translateX(-50%);
+    border-left: 6px solid transparent; border-right: 6px solid transparent;
+    border-top: 6px solid var(--azul);
+  }
+  .divicon-poi { transition: opacity 0.25s ease; }
+  #map.plan-on .divicon-poi { opacity: 0; pointer-events: none; }
+  .divicon-poi.pin-oculto { opacity: 0 !important; pointer-events: none !important; }
+  .divicon-poi span { color: #fff; }
+  .divicon-poi.plane { background: var(--acento); }
+  .divicon-poi.plane::after { border-top-color: var(--acento); }
+  .divicon-poi.plane span { color: var(--azul-osc); }
+
+  /* Selector de piso */
+  #floorSelector {
+    position: absolute; z-index: 500; top: 66px; left: 50%; transform: translateX(-50%);
+    display: none; gap: 4px;
+    background: rgba(255,255,255,0.95); padding: 4px; border-radius: 999px;
+    box-shadow: var(--shadow);
+  }
+  #floorSelector.show { display: flex; }
+  #floorSelector button {
+    border: none; background: transparent; color: var(--ink-soft);
+    font-size: 0.8rem; font-weight: 700; padding: 6px 13px; border-radius: 999px;
+    cursor: pointer;
+  }
+  #floorSelector button.active { background: var(--azul); color: #fff; }
+
+  /* Tira de fotos del lugar seleccionado */
+  #photoStrip {
+    position: absolute; z-index: 500; left: 0; right: 0;
+    bottom: 28px;
+    display: none; gap: 8px; padding: 10px 14px;
+    overflow-x: auto;
+    transition: bottom 0.28s ease;
+  }
+  #photoStrip.show { display: flex; }
+  #photoStrip img {
+    height: 64px; width: 88px; object-fit: cover; border-radius: 10px;
+    box-shadow: var(--shadow); cursor: pointer; flex-shrink: 0;
+  }
+
+  /* Lightbox de foto a pantalla completa */
+  #lightbox {
+    position: fixed; inset: 0; z-index: 2000; background: rgba(10,20,35,0.92);
+    display: none; align-items: center; justify-content: center; padding: 24px;
+  }
+  #lightbox.show { display: flex; }
+  #lightbox img { max-width: 100%; max-height: 82vh; border-radius: 10px; transition: transform 0.05s linear; touch-action: none; }
+  #lightbox img.zoomable { max-height: 90vh; background: #fff; cursor: grab; }
+  #lightbox .hint {
+    position: absolute; bottom: 22px; left: 0; right: 0; text-align: center;
+    color: rgba(255,255,255,0.65); font-size: 0.78rem;
+  }
+  #lightbox .close {
+    position: absolute; top: 22px; right: 20px; color: #fff; font-size: 1.6rem;
+    background: rgba(255,255,255,0.15); width: 40px; height: 40px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; cursor: pointer; border: none;
+  }
+
+  #lightboxStage { position: relative; line-height: 0; touch-action: none; transition: transform 0.05s linear; }
+  #lightboxStage img { display: block; max-width: calc(100vw - 48px); max-height: 86vh; width: auto; height: auto; border-radius: 10px; transition: none; }
+  #lightboxStage img.zoomable { max-height: 88vh; background: #fff; cursor: grab; }
+
+  /* Zonas tocables del plano (como los lugares de Google Maps) */
+  .spotHit { position: absolute; cursor: pointer; pointer-events: auto; border-radius: 6px; -webkit-tap-highlight-color: transparent; }
+  .spotHit:active { background: rgba(245,184,61,0.28); }
+  .spotBadge {
+    position: absolute; width: 4.8%; aspect-ratio: 1 / 1; transform: translate(-50%, -50%);
+    border-radius: 50%; background: #f5b83d; border: 2px solid #fff; pointer-events: auto; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 2px 6px rgba(13,43,78,0.4); animation: spotPulse 1.8s ease-out infinite;
+  }
+  .spotBadge svg { width: 62%; height: 62%; }
+  @keyframes spotPulse { 0% { box-shadow: 0 0 0 0 rgba(245,184,61,0.6); } 100% { box-shadow: 0 0 0 14px rgba(245,184,61,0); } }
+
+  /* Tarjeta con foto al tocar un lugar */
+  #spotCard {
+    position: fixed; z-index: 2600; left: 50%; transform: translateX(-50%); bottom: 28px;
+    width: min(92vw, 380px); background: #fff; border-radius: 18px; overflow: hidden;
+    box-shadow: 0 12px 34px rgba(13,43,78,0.38); display: none;
+  }
+  #spotCard.show { display: block; }
+  .popGo { margin-top: 8px; padding: 8px 14px; border: none; border-radius: 999px; background: var(--azul); color: #fff; font: 700 0.8rem/1 inherit; font-family: inherit; cursor: pointer; }
+  #spotCard .cardTxt .popGo { display: block; }
+  #spotCard .cardPhotos { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
+  #spotCard .cardPhotos::-webkit-scrollbar { display: none; }
+  #spotCard .cardPhotos img { flex: 0 0 100%; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; scroll-snap-align: start; cursor: zoom-in; object-position: 50% 38%; }
+  #spotCard .cardTxt { padding: 10px 16px 14px; }
+  #spotCard .cardTxt b { display: block; font-size: 1rem; color: var(--azul-osc); }
+  #spotCard .cardTxt span { font-size: 0.82rem; color: var(--ink-soft); }
+  #spotCard .cardDots { position: absolute; left: 0; right: 0; top: calc((min(92vw, 380px) * 0.75) - 22px); display: flex; justify-content: center; gap: 6px; pointer-events: none; }
+  #spotCard .cardDots i { width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,0.55); }
+  #spotCard .cardDots i.on { background: #fff; }
+  #spotCard .cardClose {
+    position: absolute; top: 10px; right: 10px; width: 32px; height: 32px; border-radius: 50%; border: none;
+    background: rgba(13,43,78,0.65); color: #fff; font-size: 1rem; cursor: pointer; z-index: 2;
+  }
+  #photoViewer {
+    position: fixed; inset: 0; z-index: 3000; background: rgba(8,16,28,0.95); display: none;
+    align-items: center; justify-content: center; padding: 12px;
+  }
+  #photoViewer.show { display: flex; }
+  #photoViewer img { max-width: 100%; max-height: 92vh; border-radius: 10px; }
+
+  /* Muñequito = tu ubicación */
+  .mono { width: 36px; height: 48px; animation: monoBob 2.2s ease-in-out infinite; filter: drop-shadow(0 3px 4px rgba(13,43,78,0.4)); }
+  .mono svg { width: 100%; height: 100%; display: block; }
+  @keyframes monoBob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+
+  /* Panel de la izquierda: lugares y cómo llegar */
+  #navBtn {
+    position: absolute; z-index: 500; top: 66px; left: 14px; height: 44px; padding: 0 16px 0 14px; border-radius: 999px;
+    border: none; background: var(--panel); box-shadow: var(--shadow); font: 700 0.9rem/1 inherit; font-family: inherit; color: var(--azul-osc);
+    display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer;
+  }
+  #navBtn:active { transform: scale(0.92); }
+  #navScrim { position: fixed; inset: 0; z-index: 2150; background: rgba(8,16,28,0.38); display: none; }
+  #navScrim.show { display: block; }
+  #navDrawer {
+    position: fixed; z-index: 2200; top: 0; bottom: 0; left: 0; width: min(88vw, 360px); background: #fff;
+    box-shadow: 8px 0 30px rgba(13,43,78,0.3); transform: translateX(-105%); transition: transform 0.28s ease;
+    display: flex; flex-direction: column; padding-top: env(safe-area-inset-top, 0px);
+  }
+  #navDrawer.open { transform: translateX(0); }
+  .navHead { display: flex; align-items: center; justify-content: space-between; padding: 16px 16px 6px; font-size: 1.1rem; color: var(--azul-osc); }
+  .navHead button { border: none; background: var(--azul-claro); color: var(--azul); width: 34px; height: 34px; border-radius: 50%; font-size: 1rem; cursor: pointer; }
+  .navBody { overflow-y: auto; padding: 6px 12px 28px; flex: 1; }
+  .navFrom { display: block; font-size: 0.76rem; color: var(--ink-soft); margin: 4px 4px 8px; }
+  .navFrom select { width: 100%; margin-top: 4px; padding: 10px; border-radius: 10px; border: 1px solid var(--line); font-size: 0.9rem; background: #fff; color: var(--ink); }
+  .navGroup { font-size: 0.7rem; font-weight: 700; color: var(--azul-med); text-transform: uppercase; letter-spacing: 0.06em; margin: 14px 6px 4px; }
+  .navPlace { display: flex; align-items: center; gap: 10px; padding: 9px 8px; border-radius: 12px; cursor: pointer; }
+  .navPlace:active { background: var(--azul-claro); }
+  .navPlace .ico { width: 36px; height: 36px; border-radius: 10px; background: var(--azul-claro); display: flex; align-items: center; justify-content: center; font-size: 1.05rem; flex-shrink: 0; }
+  .navPlace .t { flex: 1; min-width: 0; }
+  .navPlace .t b { display: block; font-size: 0.9rem; color: var(--ink); line-height: 1.2; }
+  .navPlace .t span { font-size: 0.74rem; color: var(--ink-soft); }
+  .navPlace .d { font-size: 0.74rem; color: var(--azul-med); font-weight: 700; white-space: nowrap; text-align: right; }
+  .navBack { border: none; background: transparent; color: var(--azul); font-weight: 700; padding: 8px 4px; cursor: pointer; font-size: 0.9rem; }
+  #navRouteTitle { margin: 2px 4px 0; font-size: 1.05rem; color: var(--azul-osc); }
+  #navRouteMeta { margin: 2px 4px 6px; font-size: 0.8rem; color: var(--ink-soft); }
+  .navBtns { display: flex; gap: 8px; margin: 10px 0 4px; }
+  .navBtns button { flex: 1; padding: 11px 6px; border-radius: 12px; border: none; font-weight: 700; font-size: 0.82rem; cursor: pointer; background: var(--azul-claro); color: var(--azul); }
+  .navBtns button.main { background: var(--azul); color: #fff; }
+  .navSteps { list-style: none; padding: 0; margin: 6px 0 0; }
+  .navSteps li { display: flex; gap: 10px; padding: 8px 4px; font-size: 0.9rem; line-height: 1.35; color: var(--ink); }
+  .navSteps .n { flex: 0 0 24px; height: 24px; border-radius: 50%; background: var(--azul); color: #fff; font-size: 0.74rem; display: flex; align-items: center; justify-content: center; font-weight: 700; margin-top: 1px; }
+  .navSteps .piso { display: block; font-size: 0.72rem; font-weight: 700; color: var(--azul-med); margin: 12px 4px 0; text-transform: uppercase; letter-spacing: 0.05em; padding: 0; }
+  #routeChip {
+    position: fixed; z-index: 520; left: 50%; transform: translateX(-50%); top: 126px; max-width: 92vw;
+    background: rgba(13,43,78,0.94); color: #fff; border-radius: 999px; padding: 7px 7px 7px 14px; font-size: 0.8rem;
+    display: none; align-items: center; gap: 8px; box-shadow: var(--shadow); white-space: nowrap;
+  }
+  #routeChip.show { display: flex; }
+  #routeChip .txt { overflow: hidden; text-overflow: ellipsis; }
+  #routeChip button { border: none; border-radius: 999px; padding: 6px 11px; font-size: 0.78rem; font-weight: 700; cursor: pointer; flex-shrink: 0; }
+  #routeChip .go { background: #ffcc33; color: var(--azul-osc); }
+  #routeChip .x { background: rgba(255,255,255,0.18); color: #fff; }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div class="topbar">
+  <div class="brand"><span class="dot" id="metarDot"></span> DINACIA <button id="metarChip" type="button" aria-label="Meteo de los pilotos (METAR)"></button></div>
+  <div class="topActions">
+    <button id="pistaBtn" title="Modo pista">✈️</button>
+  </div>
+</div>
+<div id="sombras" aria-hidden="true"></div>
+
+<div id="floorSelector"></div>
+<button id="navBtn" title="Lugares y cómo llegar" aria-label="Lugares y cómo llegar"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M8 6h12M8 12h12M8 18h12"/><circle cx="3.5" cy="6" r="1" fill="currentColor"/><circle cx="3.5" cy="12" r="1" fill="currentColor"/><circle cx="3.5" cy="18" r="1" fill="currentColor"/></svg><span>Lugares</span></button>
+<div id="routeChip"><span class="txt" id="routeChipTxt"></span><button class="go" id="routeChipGo">Pasos</button><button class="x" id="routeChipX">✕</button></div>
+<div id="navScrim"></div>
+<aside id="navDrawer" aria-label="Lugares y cómo llegar">
+  <div class="navHead"><b>¿A dónde vas?</b><button id="navClose" aria-label="Cerrar">✕</button></div>
+  <div class="navBody" id="navListView">
+    <label class="navFrom">Desde<select id="navFrom"></select></label>
+    <div id="navPlaces"></div>
+  </div>
+  <div class="navBody" id="navRouteView" style="display:none">
+    <button class="navBack" id="navBack">← Lugares</button>
+    <h3 id="navRouteTitle"></h3>
+    <div id="navRouteMeta"></div>
+    <div class="navBtns"><button class="main" id="navShow">Ver en el mapa</button><button id="navFloorA"></button><button id="navFloorB"></button></div>
+    <ol class="navSteps" id="navSteps"></ol>
+  </div>
+</aside>
+
+<button id="locateBtn" class="raised" title="Mi ubicación y punto de partida" aria-label="Mi ubicación y punto de partida">📍</button>
+<div id="locHint" class="raised">📍 Tocá acá para marcar tu punto de partida</div>
+<div id="locMenu" class="raised">
+  <div class="t">Tu ubicación</div>
+  <button id="locIr">📍<span>Ir a mi ubicación<small>Centra el mapa donde el GPS dice que estás</small></span></button>
+  <button id="locManual">🧍<span>Marcar mi punto de partida a mano<small>Ponés la personita donde estás, ideal adentro de los edificios</small></span></button>
+  <button id="locGps" style="display:none">🛰️<span>Volver a usar el GPS<small>Deja de usar el punto marcado a mano</small></span></button>
+</div>
+<div id="accBadge"></div>
+<div id="colocarBanner" class="banner">🧍 <b>Tocá en el mapa dónde estás.</b> Después podés arrastrar la personita para ajustarla.<div class="acc"><button id="colocarCancelar">Cancelar</button></div></div>
+<div id="avisoInterior" class="banner"><div id="avisoTxt"></div><div class="acc"><button id="avisoSigue">Seguir con el GPS</button><button class="main" id="avisoMarcar">Marcar a mano</button></div></div>
+<div id="toastMsg"></div>
+<div id="metarPanel" role="dialog" aria-label="METAR de Carrasco"></div>
+<div id="photoStrip"></div>
+
+<div id="lightbox">
+  <button class="close" id="lightboxClose">✕</button>
+  <div id="lightboxStage"><img id="lightboxImg" src="" alt=""></div>
+  <div class="hint" id="lightboxHint">Pellizcá para agrandar · tocá 📷 para ver la foto</div>
+</div>
+
+<div id="spotCard">
+  <button class="cardClose" id="spotClose">✕</button>
+  <div class="cardPhotos" id="spotPhotos"></div>
+  <div class="cardDots" id="spotDots"></div>
+  <div class="cardTxt"><b id="spotTitle"></b><span id="spotSub"></span><button type="button" id="spotGo" class="popGo">Cómo llegar →</button></div>
+</div>
+<div id="photoViewer"><img id="photoViewerImg" src="" alt=""></div>
+
+<div class="sheet" id="sheet">
+  <div class="sheet-handle"></div>
+  <div class="sheet-title" id="sheetTitle">
+    <span>Lugares <span class="mode" id="modeLabel">Modo normal</span></span>
+    <span class="chev">▾</span>
+  </div>
+  <div class="list" id="list"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script>
+(function () {
+  // ---------------------------------------------------------------
+  // PUNTOS — editá acá nombre / coordenadas / vía (paso obligatorio) / fotos / piso
+  // ---------------------------------------------------------------
+  // "floor": opcional. Si el lugar está en un piso con plano cargado (ver FLOORS
+  //          más abajo), poné acá el mismo id del piso (ej: "pb", "p1"). Si no
+  //          tiene piso asignado, el punto se ve siempre, en cualquier piso activo.
+  // "photos": opcional. Array de rutas relativas a imágenes (subilas junto con
+  //           el HTML a una carpeta /img en el mismo repo). Ej: ["img/dgac-1.jpg"]
+  const POIS = [
+    {
+      id: "dn",
+      short: "DN",
+      name: "Director Nacional",
+      sub: "Aviación Civil e Infraestructura Aeronáutica",
+      lat: -34.8460574, lng: -56.0292750,
+      icon: "🏛️",
+      floor: "pb",
+      photos: []
+    },
+    {
+      id: "dgia",
+      short: "DGIA",
+      name: "DGIA",
+      sub: "Dirección General de Infraestructura Aeronáutica",
+      lat: -34.8459722, lng: -56.0290000,
+      icon: "🏢",
+      floor: "pb",
+      photos: []
+    },
+    {
+      id: "dgac",
+      short: "DGAC",
+      name: "DGAC",
+      sub: "Dirección General de Aviación Civil",
+      lat: -34.8467258, lng: -56.0292131,
+      icon: "🏢",
+      floor: "pb",
+      photos: []
+    },
+    {
+      id: "director_secretaria",
+      short: "D.SEC",
+      name: "Director de Secretaría",
+      sub: "Junto al despacho del Director Nacional",
+      lat: -34.8466365, lng: -56.0292674,
+      icon: "🗂️",
+      floor: "pb",
+      photos: []
+    },
+    {
+      id: "tesoreria",
+      hidePin: true, // el pin no se dibuja en el mapa (sigue en la lista y en el plano)
+      short: "TES",
+      name: "Tesorería",
+      sub: "",
+      lat: -34.8464416, lng: -56.0290926,
+      icon: "💼",
+      floor: "pb",
+      photos: ["foto-tesoreria.jpg"]
+    },
+    {
+      id: "personal_aero",
+      short: "PERS. AERO",
+      name: "Personal Aeronáutico",
+      sub: "Edificio al otro lado de la calle interna",
+      lat: -34.8460763, lng: -56.0283045,  // sale de tu código plus 5X3C+HMC; coincide con el edificio de la foto satelital
+      icon: "👥",
+      photos: []
+    },
+    {
+      id: "admin_finanzas",
+      short: "DAF",
+      name: "Director de Administración y Finanzas",
+      sub: "1er piso — se accede por la escalera",
+      lat: -34.8467305, lng: -56.0292267,
+      icon: "🪜",
+      floor: "p1",
+      via: [ { lat: -34.846600, lng: -56.029201 } ], // punto de la escalera: el recorrido pasa por acá antes de llegar
+      photos: []
+    },
+    {
+      id: "rna",
+      short: "RNA",
+      name: "Registro Nacional de Aeronaves",
+      sub: "",
+      lat: -34.8459738, lng: -56.0281125,
+      icon: "📋",
+      floor: "pb",
+      photos: []
+    }
+  ];
+
+  // ---------------------------------------------------------------
+  // PUNTOS DE REFERENCIA PARA QR — un QR pegado en un lugar fijo del
+  // edificio (ej: entrada de cada piso) le dice a la app "asumí que
+  // el usuario está parado acá", sin depender del GPS.
+  // ---------------------------------------------------------------
+  // Cómo generar el QR de cada piso:
+  // 1. Agregá acá un objeto por punto de referencia (uno por piso, o más
+  //    si querés varios QR por piso — ej. uno en cada entrada).
+  // 2. La URL del QR es la misma del mapa + "?ref=SU_ID", ejemplo:
+  //    https://bzrro.github.io/dinacia/?ref=entrada_p1
+  // 3. Generás ese link como QR en cualquier generador (qr-code-generator.com)
+  //    e imprimís el cartel para pegar en ese punto físico del edificio.
+  const QR_REFS = [
+    {
+      id: "entrada_pb",
+      floor: "pb",
+      lat: -34.8466990, lng: -56.0289856,
+      label: "Entrada — Planta baja"
+    },
+    {
+      id: "entrada_p1",
+      floor: "p1",
+      lat: -34.8466000, lng: -56.0292010,
+      label: "Escalera — 1er piso"
+    }
+    // Agregá más acá a medida que definas dónde van los carteles con QR.
+  ];
+  // ---------------------------------------------------------------
+  // PISOS — plano esquemático de cada piso. Se ve como una imagen a
+  // pantalla completa (con zoom y arrastre táctil), NO calzado sobre
+  // el GPS — así evitamos el desajuste que da tratar de "pegar" un
+  // esquema inventado sobre coordenadas reales.
+  // ---------------------------------------------------------------
+  const FLOORS = [
+    {
+      id: "pb", label: "PB", image: "planta-baja.png",
+      size: [1441, 2418], // tamaño en píxeles de planta-baja.png
+      // Esquinas del PNG sobre el mapa real, calculadas con tus 4 puntos GPS (error menor a 0,5 m).
+      // El plano mide 48,5 m x 81,3 m y tiene la misma escala en ancho y alto: no se estira.
+      corners: {
+        topLeft: { lat: -34.8461077, lng: -56.0295556 },
+        topRight: { lat: -34.8459605, lng: -56.0290566 },
+        bottomLeft: { lat: -34.8467980, lng: -56.0292559 }
+      },
+      // Zonas tocables, en píxeles del PNG: x, y, w, h = rectángulo; bx, by = dónde va el 📷
+      spots: [
+        { id: "tesoreria", title: "Tesorería", sub: "Planta baja · pasillo principal",
+          x: 729, y: 1390, w: 170, h: 142, bx: 814, by: 1571, photos: ["foto-tesoreria.jpg"] },
+        { id: "mesa", title: "Mesa de entrada", sub: "Reguladora de Trámites, desde el hall",
+          x: 891, y: 1814, w: 214, h: 226, bx: 1067, by: 1854, photos: ["foto-hall-mesa.jpg"] },
+        { id: "hall", title: "Hall de Acceso", sub: "Puerta vidriada al pasillo principal",
+          x: 628, y: 1814, w: 260, h: 530, bx: 757, by: 1946, photos: ["foto-hall-acceso.jpg", "foto-hall-mesa.jpg"] }
+      ]
+    },
+    {
+      id: "p1", label: "1er piso", image: "planta-alta.png",
+      size: [1441, 2418],
+      corners: {
+        topLeft: { lat: -34.8461077, lng: -56.0295556 },
+        topRight: { lat: -34.8459605, lng: -56.0290566 },
+        bottomLeft: { lat: -34.8467980, lng: -56.0292559 }
+      },
+      spots: []
+    }
+  ];
+
+  const CAMARA_PX = 69.2;   // diámetro de la cámara en píxeles de plano (4,8 % del plano principal)
+  const CAMERA_SVG = '<svg viewBox="-20 -20 40 40"><rect x="-13" y="-8" width="26" height="18" rx="3" fill="#10233c"/><rect x="-5" y="-12" width="10" height="6" rx="2" fill="#10233c"/><circle cx="0" cy="1" r="5.5" fill="#f5b83d"/><circle cx="0" cy="1" r="2.6" fill="#10233c"/></svg>';
+
+  // ---------------------------------------------------------------
+  // MAPA
+  // ---------------------------------------------------------------
+  const center = [-34.84635, -56.02895];
+  // Límite geográfico: no deja alejarse (pan) de la zona de DINACIA,
+  // pero el zoom (acercarse) sigue libre dentro de ese rectángulo.
+  const DINACIA_BOUNDS = [[-34.8480, -56.0310], [-34.8445, -56.0270]];
+
+  const map = L.map("map", {
+    zoomControl: false,
+    attributionControl: true,
+    maxBounds: DINACIA_BOUNDS,
+    maxBoundsViscosity: 1.0,
+    minZoom: 17,
+    maxZoom: 22
+  }).setView(center, 18);
+
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 22,
+    maxNativeZoom: 19,
+    subdomains: "abc",
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+
+  L.control.zoom({ position: "bottomright" }).addTo(map);
+
+  // ---------------------------------------------------------------
+  // Plano calzado y rotado sobre el mapa real. Las esquinas fueron
+  // relevadas con GPS parado en el lugar (no son una suposición).
+  // Como es el mismo edificio, PB y 1er piso comparten las mismas
+  // esquinas — la huella no cambia de un piso a otro.
+  // ---------------------------------------------------------------
+  const OVERLAY_CORNERS = {
+    topLeft: { lat: -34.8460505, lng: -56.0296037 },
+    topRight: { lat: -34.8458973, lng: -56.0290845 },
+    bottomLeft: { lat: -34.8469380, lng: -56.0291719 }
+  };
+  const ROTATED_ZOOM_THRESHOLD = 20; // a partir de este zoom se revela el plano
+
+  function addRotatedOverlay(floor, corners) {
+    const stage = document.createElement("div");
+    stage.style.cssText = "position:absolute;transform-origin:0 0;opacity:0;visibility:hidden;transition:opacity 0.25s ease;pointer-events:none;";
+    const img = document.createElement("img");
+    img.src = floor.image;
+    img.style.cssText = "display:block;width:100%;height:100%;pointer-events:none;";
+    stage.appendChild(img);
+    (floor.spots || []).forEach(sp => spotEls(sp, floor.size).forEach(el => stage.appendChild(el)));
+    map.getPanes().overlayPane.appendChild(stage);
+
+    let visible = false;
+    function reposition() {
+      const w = img.naturalWidth, h = img.naturalHeight;
+      if (!w || !h) return;
+      const tl = map.latLngToLayerPoint(corners.topLeft);
+      const tr = map.latLngToLayerPoint(corners.topRight);
+      const bl = map.latLngToLayerPoint(corners.bottomLeft);
+      const a = (tr.x - tl.x) / w, b = (tr.y - tl.y) / w;
+      const c = (bl.x - tl.x) / h, d = (bl.y - tl.y) / h;
+      stage.style.width = w + "px";
+      stage.style.height = h + "px";
+      stage.style.left = tl.x + "px";
+      stage.style.top = tl.y + "px";
+      stage.style.transform = "matrix(" + a + "," + b + "," + c + "," + d + ",0,0)";
+    }
+    img.addEventListener("load", reposition);
+    map.on("move zoom viewreset", reposition);
+
+    return {
+      show() { visible = true; stage.style.visibility = "visible"; stage.style.opacity = "1"; reposition(); },
+      hide() { visible = false; stage.style.opacity = "0"; stage.style.visibility = "hidden"; },
+      isVisible() { return visible; }
+    };
+  }
+
+  const rotatedOverlays = {};
+  FLOORS.forEach(f => { rotatedOverlays[f.id] = addRotatedOverlay(f, f.corners || OVERLAY_CORNERS); });
+
+  // Otros edificios con plano propio (un solo piso): se ven al hacer zoom, igual que el principal.
+  // DGIA, y el edificio largo completo (Personal Aeronáutico + oficinas + Registro Nacional de Aeronaves), con sus cámaras de fotos.
+  const BUILDINGS = [
+    {
+      id: "dgia", image: "plano-dgia.png", size: [477, 1062],
+      corners: { topLeft: { lat: -34.8460030, lng: -56.0291073 }, topRight: { lat: -34.8459527, lng: -56.0289425 }, bottomLeft: { lat: -34.8463052, lng: -56.0289715 } },
+      spots: [
+        { id: "dgia_secretaria", title: "DGIA · Secretaría", sub: "Vista desde la puerta de entrada",
+          x: 293, y: 246, w: 166, h: 149, bx: 406, by: 320, photos: ["foto-dgia-secretaria.jpg"] },
+        { id: "dgia_direccion", title: "DGIA · Dirección", sub: "Puerta de la Dirección",
+          x: 121, y: 91, w: 119, h: 113, bx: 192, by: 148, photos: ["foto-dgia-direccion.jpg"] }
+      ]
+    },
+    {
+      id: "rnapers", image: "plano-rna-pers.png", size: [1686, 997],
+      corners: { topLeft: { lat: -34.8459660, lng: -56.0286417 }, topRight: { lat: -34.8457975, lng: -56.0280562 }, bottomLeft: { lat: -34.8462511, lng: -56.0285197 } },
+      spots: [
+        { id: "rna_puerta", title: "Registro Nacional de Aeronaves", sub: "Puerta de entrada · atención al público: lunes a viernes, 9 a 13 h",
+          x: 1010, y: 383, w: 122, h: 134, bx: 1087, by: 451, photos: ["foto-rna-puerta.jpg"] },
+        { id: "pers_puerta", title: "Personal Aeronáutico", sub: "Puerta de entrada (doble hoja de vidrio)",
+          x: 448, y: 400, w: 143, h: 116, bx: 493, by: 451, photos: ["foto-pers-aero-puerta.jpg"] },
+        { id: "pasarela", title: "Pasarela cubierta", sub: "Del Personal Aeronáutico al Registro Nacional de Aeronaves",
+          x: 612, y: 400, w: 128, h: 95, bx: 668, by: 451, photos: ["foto-pasarela-rna.jpg"] }
+      ]
+    }
+  ];
+  const extraOverlays = BUILDINGS.map(b => addRotatedOverlay(b, b.corners));
+
+  function updateRotatedOverlayVisibility() {
+    const shouldShow = map.getZoom() >= ROTATED_ZOOM_THRESHOLD;
+    const floorId = activeFloor || (FLOORS[0] && FLOORS[0].id);
+    Object.entries(rotatedOverlays).forEach(([id, ov]) => {
+      if (shouldShow && id === floorId) ov.show(); else ov.hide();
+    });
+    document.getElementById("map").classList.toggle("plan-on", shouldShow);
+    extraOverlays.forEach(ov => { if (shouldShow) ov.show(); else ov.hide(); });
+    if (!shouldShow) hideSpotCard();
+  }
+  map.on("zoomend", updateRotatedOverlayVisibility);
+  // ---------------------------------------------------------------
+  // GESTOS: doble toque = acercar, un toque = alejar.
+  // Un toque en el vacío espera un instante por si viene el segundo; si hay
+  // una tarjeta de foto abierta, ese toque solo la cierra (no aleja).
+  // Los toques sobre pines, cámaras, botones y el panel no cuentan.
+  // ---------------------------------------------------------------
+  map.doubleClickZoom.disable();
+  const TAP_ESPERA = 300; // ms para distinguir uno de dos toques
+  let tapTimer = null, tapAnterior = 0;
+  map.on("click", e => {
+    if (colocando) { colocarPunto(e.latlng); return; }
+    if (spotCardEl.classList.contains("show")) { hideSpotCard(); return; }
+    const ahora = Date.now();
+    if (tapTimer && ahora - tapAnterior < TAP_ESPERA + 120) {
+      clearTimeout(tapTimer); tapTimer = null;
+      map.setZoomAround(e.containerPoint, Math.min(map.getZoom() + 1, map.getMaxZoom()));
+    } else {
+      tapAnterior = ahora;
+      tapTimer = setTimeout(() => {
+        tapTimer = null;
+        map.setZoom(Math.max(map.getZoom() - 1, map.getMinZoom()));
+      }, TAP_ESPERA);
+    }
+  });
+
+  let pistaMode = false;
+  let qrRef = null;        // punto de check-in por QR (si entró por un QR)
+  let currentRoute = null; // ruta activa del panel "cómo llegar"
+  let routeLayer = null;
+  let userLatLng = null;
+  let userMarker = null;
+  let accuracyCircle = null;
+  let manualMode = false;        // el punto de partida lo marcó la persona a mano (el GPS no lo mueve)
+  let colocando = false;         // esperando el toque en el mapa para ubicar la personita
+  let gpsFix = null;             // último dato del GPS, aunque estemos en modo manual
+  let startFloor = "pb";         // piso donde marcó el punto a mano
+  let navPreferGps = false;      // al abrir 🧭, dejar "Desde" en "Donde estoy"
+  let avisoInteriorVisto = false;
+  let vigilando = false;         // ya hay un seguimiento del GPS en marcha
+  const poiMarkers = {};
+  const routeLines = {};
+  let selectedId = null;
+
+  function poiIcon(poi, plane) {
+    const w = Math.max(64, Math.round((poi.short || poi.name).length * 7.6 + 24));
+    return L.divIcon({
+      className: "",
+      html: '<div class="divicon-poi' + (plane ? " plane" : "") + (poi.hidePin ? " pin-oculto" : "") + '"><span>' + (poi.short || poi.name) + "</span></div>",
+      iconSize: [w, 28],
+      iconAnchor: [w / 2, 34]
+    });
+  }
+
+
+  // ---------------------------------------------------------------
+  // CAMINOS — trazados sobre la foto satelital (Google Maps) que pasó Germán
+  // ---------------------------------------------------------------
+  const CAMINO_DGIA = [
+      [-34.8461811, -56.0286833],
+      [-34.8461976, -56.0286952],
+      [-34.8462241, -56.0287193],
+      [-34.8462506, -56.0287452],
+      [-34.8462770, -56.0287706],
+      [-34.8463035, -56.0287986],
+      [-34.8463300, -56.0288267],
+      [-34.8463564, -56.0288533],
+      [-34.8463829, -56.0288762],
+      [-34.8464094, -56.0288956],
+      [-34.8464358, -56.0289181],
+      [-34.8464623, -56.0289476],
+      [-34.8464887, -56.0289863],
+      [-34.8465010, -56.0290053]
+  ];
+  const CAMINO_DGIA_ACCESO = [
+      [-34.8462770, -56.0287706],
+      [-34.8462458, -56.0287848],
+      [-34.8461956, -56.0288097],
+      [-34.8461443, -56.0288304],
+      [-34.8460935, -56.0288532],
+      [-34.8460525, -56.0288763],
+      [-34.8460437, -56.0288919]
+  ];
+
+  // Los caminos se dibujan como las calles del mapa: relleno claro con borde suave.
+  // El ancho está en metros, así que crece al hacer zoom igual que una calle real.
+  const callesitas = [];
+  function metrosPorPixel(zoom) { return 156543.03 * Math.cos(34.846 * Math.PI / 180) / Math.pow(2, zoom); }
+  function dibujarCamino(pts, anchoM, relleno, borde, texto, caps) {
+    const casing = L.polyline(pts, { color: borde, weight: 6, opacity: 1, lineCap: caps, lineJoin: "round", interactive: false }).addTo(map);
+    const fill = L.polyline(pts, { color: relleno, weight: 4, opacity: 1, lineCap: caps, lineJoin: "round" })
+      .addTo(map).bindTooltip(texto, { sticky: true });
+    callesitas.push({ casing, fill, anchoM });
+  }
+  function ajustarCallesitas() {
+    const mpp = metrosPorPixel(map.getZoom());
+    callesitas.forEach(c => {
+      const w = Math.max(3, c.anchoM / mpp);
+      c.fill.setStyle({ weight: w });
+      c.casing.setStyle({ weight: w + Math.max(2, 0.7 / mpp) });
+    });
+  }
+  map.on("zoom zoomend", ajustarCallesitas);
+  dibujarCamino(CAMINO_DGIA, 2.0, "#ffffff", "#bcd9f0", "Camino a DGIA · unos 45 m a pie", "butt");   // extremos rectos: no pisan la calle ni el edificio
+  dibujarCamino(CAMINO_DGIA_ACCESO, 2.0, "#ffffff", "#bcd9f0", "Camino al DGIA, pegado al muro del lado este", "butt");
+  const PASARELA_RNA = [
+      [-34.8460375, -56.0283869],
+      [-34.8459967, -56.0282452]
+  ];
+  dibujarCamino(PASARELA_RNA, 2.4, "#ffffff", "#bcd9f0", "Pasarela cubierta: Personal Aeronáutico ↔ Registro Nacional de Aeronaves", "butt");
+  ajustarCallesitas();
+
+  // Para cada lugar con pin o cámara: a qué lugar de la guía 🧭 corresponde (así «Cómo llegar» arma la ruta)
+  const POI_NAV = { dn: "dn", dgia: "dgia", dgac: "dgac", director_secretaria: "dsec", tesoreria: "tes", personal_aero: "pers", admin_finanzas: "daf", rna: "rna",
+                    mesa: "mesa", dgia_secretaria: "dgia", dgia_direccion: "dgia", pers_puerta: "pers", rna_puerta: "rna" };
+  function comoLlegar(placeId) {
+    const place = NAV_PLACES.find(p => p.id === placeId);
+    if (!place) return;
+    map.closePopup(); hideSpotCard();
+    navFillFrom();
+    if (userLatLng) document.getElementById("navFrom").value = "gps";
+    navOpen(true);
+    navGo(place);
+  }
+  function popupPoi(poi) {
+    const box = document.createElement("div");
+    const b = document.createElement("b"); b.textContent = poi.name; box.appendChild(b);
+    if (poi.sub) { box.appendChild(document.createElement("br")); box.appendChild(document.createTextNode(poi.sub)); }
+    if (POI_NAV[poi.id]) {
+      const btn = document.createElement("button"); btn.type = "button"; btn.className = "popGo"; btn.textContent = "Cómo llegar →";
+      btn.addEventListener("click", () => comoLlegar(POI_NAV[poi.id]));
+      box.appendChild(document.createElement("br")); box.appendChild(btn);
+    }
+    return box;
+  }
+  POIS.forEach(poi => {
+    const marker = L.marker([poi.lat, poi.lng], { icon: poiIcon(poi, false), interactive: !poi.hidePin })
+      .addTo(map)
+      .bindPopup(popupPoi(poi));
+    marker.on("click", () => selectPoi(poi.id));
+    poiMarkers[poi.id] = marker;
+  });
+
+  // ---------------------------------------------------------------
+  // LISTA INFERIOR
+  // ---------------------------------------------------------------
+  const listEl = document.getElementById("list");
+
+  function haversine(a, b) {
+    const R = 6371000;
+    const toRad = d => d * Math.PI / 180;
+    const dLat = toRad(b.lat - a.lat), dLng = toRad(b.lng - a.lng);
+    const s = Math.sin(dLat/2)**2 + Math.cos(toRad(a.lat))*Math.cos(toRad(b.lat))*Math.sin(dLng/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1-s));
+  }
+
+  function renderList() {
+    listEl.innerHTML = "";
+    POIS.forEach(poi => {
+      const row = document.createElement("div");
+      row.className = "poi" + (poi.id === selectedId ? " selected" : "");
+      let distTxt = "";
+      if (userLatLng) {
+        const d = Math.round(haversine(userLatLng, poi));
+        distTxt = d < 1000 ? d + " m" : (d/1000).toFixed(1) + " km";
+      }
+      row.innerHTML =
+        '<div class="poi-txt"><div class="poi-name">' + poi.name + '</div>' +
+        (poi.sub ? '<div class="poi-sub">' + poi.sub + '</div>' : '') + '</div>' +
+        '<div class="poi-dist">' + (poi.photos && poi.photos.length ? '📷 ' : '') + distTxt + '</div>';
+      row.addEventListener("click", () => selectPoi(poi.id, true));
+      listEl.appendChild(row);
+    });
+  }
+
+  function selectPoi(id, flyTo) {
+    selectedId = id;
+    renderList();
+    const poi = POIS.find(p => p.id === id);
+    if (flyTo) map.flyTo([poi.lat, poi.lng], 19, { duration: 0.6 });
+    poiMarkers[id].openPopup();
+    drawRoute(poi);
+    setSheetCollapsed(true);
+    if (poi.floor) setFloor(poi.floor);
+    renderPhotoStrip(poi);
+  }
+
+  function setSheetCollapsed(collapsed) {
+    collapsed = true;   // la lista de abajo ya no se usa: los lugares están en el botón «Lugares»
+    sheetCollapsed = collapsed;
+    document.getElementById("sheet").classList.toggle("collapsed", collapsed);
+    document.getElementById("locateBtn").classList.toggle("raised", !collapsed);
+    document.getElementById("accBadge").classList.toggle("raised", !collapsed);
+    document.getElementById("locMenu").classList.toggle("raised", !collapsed);
+    document.getElementById("locHint").classList.toggle("raised", !collapsed);
+    document.getElementById("photoStrip").style.bottom = "28px";
+  }
+  let sheetCollapsed = false;
+  document.getElementById("sheetTitle").addEventListener("click", () => {
+    setSheetCollapsed(!sheetCollapsed);
+  });
+
+  // ---------------------------------------------------------------
+  // FOTOS — tira de miniaturas del lugar seleccionado + lightbox
+  // ---------------------------------------------------------------
+  const photoStripEl = document.getElementById("photoStrip");
+  const lightboxEl = document.getElementById("lightbox");
+  const lightboxImgEl = document.getElementById("lightboxImg");
+  const lightboxStageEl = document.getElementById("lightboxStage");
+
+  function renderPhotoStrip(poi) {
+    photoStripEl.innerHTML = "";
+    if (!poi.photos || poi.photos.length === 0) {
+      photoStripEl.classList.remove("show");
+      return;
+    }
+    poi.photos.forEach(src => {
+      const img = document.createElement("img");
+      img.src = src;
+      img.alt = poi.name;
+      img.addEventListener("click", () => openLightbox(src, poi.name));
+      photoStripEl.appendChild(img);
+    });
+    photoStripEl.classList.add("show");
+  }
+
+  function openLightbox(src, alt, isPlan, floor) {
+    lightboxImgEl.src = src;
+    lightboxImgEl.alt = alt;
+    lightboxEl.classList.add("show");
+    resetPinchZoom();
+    lightboxImgEl.classList.toggle("zoomable", !!isPlan);
+    document.getElementById("lightboxHint").style.display = isPlan ? "block" : "none";
+    lightboxStageEl.querySelectorAll("[data-lb-spot]").forEach(el => el.remove());
+    if (isPlan && floor) {
+      const rs = navLightboxRoute(floor);
+      if (rs) { rs.dataset.lbSpot = "1"; lightboxStageEl.appendChild(rs); }
+    }
+    if (isPlan && floor && floor.spots) {
+      floor.spots.forEach(sp => spotEls(sp, floor.size).forEach(el => {
+        el.dataset.lbSpot = "1";
+        lightboxStageEl.appendChild(el);
+      }));
+    }
+  }
+  function closeLightbox() {
+    lightboxEl.classList.remove("show");
+    hideSpotCard();
+  }
+  document.getElementById("lightboxClose").addEventListener("click", closeLightbox);
+  lightboxEl.addEventListener("click", e => {
+    if (e.target === lightboxEl) closeLightbox();
+  });
+
+  // ---------------------------------------------------------------
+  // ZONAS TOCABLES + TARJETA CON FOTO (como los lugares de Google Maps)
+  // ---------------------------------------------------------------
+
+  function spotEls(spot, size) {
+    const pct = (v, t) => (v / t * 100) + "%";
+    const open = ev => { ev.stopPropagation(); openSpot(spot); };
+    const hit = document.createElement("div");
+    hit.className = "spotHit";
+    hit.style.left = pct(spot.x, size[0]); hit.style.top = pct(spot.y, size[1]);
+    hit.style.width = pct(spot.w, size[0]); hit.style.height = pct(spot.h, size[1]);
+    hit.addEventListener("click", open);
+    const els = [hit];
+    if (spot.badge !== false) {
+      const b = document.createElement("div");
+      b.className = "spotBadge";
+      const bx = spot.bx !== undefined ? spot.bx : spot.x + spot.w - 40;
+      const by = spot.by !== undefined ? spot.by : spot.y + 40;
+      b.style.left = pct(bx, size[0]); b.style.top = pct(by, size[1]);
+      b.style.width = pct(CAMARA_PX, size[0]);   // mismo tamaño real en todos los planos (todos tienen la misma escala)
+      b.innerHTML = CAMERA_SVG;
+      b.addEventListener("click", open);
+      els.push(b);
+    }
+    return els;
+  }
+
+  const spotCardEl = document.getElementById("spotCard");
+  const spotPhotosEl = document.getElementById("spotPhotos");
+  const spotDotsEl = document.getElementById("spotDots");
+  const photoViewerEl = document.getElementById("photoViewer");
+
+  function openSpot(spot) {
+    spotPhotosEl.innerHTML = "";
+    spotDotsEl.innerHTML = "";
+    const photos = spot.photos || [];
+    photos.forEach((src, i) => {
+      const im = document.createElement("img");
+      im.src = src; im.alt = spot.title;
+      im.addEventListener("click", () => {
+        document.getElementById("photoViewerImg").src = src;
+        photoViewerEl.classList.add("show");
+      });
+      spotPhotosEl.appendChild(im);
+      if (photos.length > 1) {
+        const d = document.createElement("i");
+        if (i === 0) d.className = "on";
+        spotDotsEl.appendChild(d);
+      }
+    });
+    document.getElementById("spotTitle").textContent = spot.title;
+    document.getElementById("spotSub").textContent = spot.sub || "";
+    const goBtn = document.getElementById("spotGo"), navId = POI_NAV[spot.id];
+    goBtn.style.display = navId ? "inline-block" : "none";
+    goBtn.onclick = navId ? () => comoLlegar(navId) : null;
+    spotCardEl.classList.add("show");
+    spotPhotosEl.scrollLeft = 0;
+    if (!lightboxEl.classList.contains("show")) setSheetCollapsed(true);
+  }
+  function hideSpotCard() { spotCardEl.classList.remove("show"); }
+  spotPhotosEl.addEventListener("scroll", () => {
+    const i = Math.round(spotPhotosEl.scrollLeft / (spotPhotosEl.clientWidth || 1));
+    Array.prototype.forEach.call(spotDotsEl.children, (d, j) => { d.className = j === i ? "on" : ""; });
+  });
+  document.getElementById("spotClose").addEventListener("click", hideSpotCard);
+  photoViewerEl.addEventListener("click", () => photoViewerEl.classList.remove("show"));
+
+  // --- Pellizcar para agrandar / arrastrar para mover (solo planos) ---
+  let pz = { scale: 1, x: 0, y: 0 };
+  function resetPinchZoom() {
+    pz = { scale: 1, x: 0, y: 0 };
+    applyPinchZoom();
+  }
+  function applyPinchZoom() {
+    lightboxStageEl.style.transform = "translate(" + pz.x + "px," + pz.y + "px) scale(" + pz.scale + ")";
+  }
+  let pinchStartDist = null, pinchStartScale = 1;
+  let dragStart = null, dragOrigin = null;
+
+  lightboxStageEl.addEventListener("touchstart", e => {
+    if (!lightboxImgEl.classList.contains("zoomable")) return;
+    if (e.touches.length === 2) {
+      pinchStartDist = touchDist(e.touches);
+      pinchStartScale = pz.scale;
+    } else if (e.touches.length === 1) {
+      dragStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      dragOrigin = { x: pz.x, y: pz.y };
+    }
+  }, { passive: true });
+
+  lightboxStageEl.addEventListener("touchmove", e => {
+    if (!lightboxImgEl.classList.contains("zoomable")) return;
+    if (e.touches.length === 2 && pinchStartDist) {
+      e.preventDefault();
+      const d = touchDist(e.touches);
+      pz.scale = Math.min(5, Math.max(1, pinchStartScale * (d / pinchStartDist)));
+      applyPinchZoom();
+    } else if (e.touches.length === 1 && dragStart && pz.scale > 1) {
+      e.preventDefault();
+      pz.x = dragOrigin.x + (e.touches[0].clientX - dragStart.x);
+      pz.y = dragOrigin.y + (e.touches[0].clientY - dragStart.y);
+      applyPinchZoom();
+    }
+  }, { passive: false });
+
+  lightboxStageEl.addEventListener("touchend", e => {
+    if (e.touches.length === 0) { pinchStartDist = null; dragStart = null; }
+  });
+
+  lightboxStageEl.addEventListener("dblclick", () => resetPinchZoom());
+
+  function touchDist(touches) {
+    const dx = touches[0].clientX - touches[1].clientX;
+    const dy = touches[0].clientY - touches[1].clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  // ---------------------------------------------------------------
+  // PISOS — overlay del plano + filtro de pines por piso activo
+  // ---------------------------------------------------------------
+  let activeFloor = null;
+
+  function setupFloorSelector() {
+    const wrap = document.getElementById("floorSelector");
+    if (FLOORS.length === 0) return;
+    wrap.classList.add("show");
+    FLOORS.forEach(f => {
+      const btn = document.createElement("button");
+      btn.textContent = f.label;
+      btn.dataset.floorId = f.id;
+      btn.addEventListener("click", () => {
+        setFloor(activeFloor === f.id ? null : f.id);
+        openLightbox(f.image, "Plano — " + f.label, true, f);
+      });
+      wrap.appendChild(btn);
+    });
+  }
+
+  function setFloor(floorId) {
+    activeFloor = floorId;
+    document.querySelectorAll("#floorSelector button").forEach(btn => {
+      btn.classList.toggle("active", btn.dataset.floorId === floorId);
+    });
+    // Los puntos sin "floor" asignado siempre se ven; los que tienen
+    // floor solo se muestran cuando coincide con el piso activo (o si
+    // no hay ningún piso activo, se muestran todos).
+    POIS.forEach(poi => {
+      const marker = poiMarkers[poi.id];
+      const visible = !poi.floor || !floorId || poi.floor === floorId;
+      if (visible && !map.hasLayer(marker)) marker.addTo(map);
+      if (!visible && map.hasLayer(marker)) map.removeLayer(marker);
+    });
+    updateRotatedOverlayVisibility();
+    renderRoute();
+  }
+
+  setupFloorSelector();
+  setFloor(FLOORS[0] && FLOORS[0].id);
+
+  // ---------------------------------------------------------------
+  // CHECK-IN POR QR — si la URL trae ?ref=id (lo que trae el QR
+  // pegado en el edificio), usamos ESA posición fija como "acá estás"
+  // en vez de esperar al GPS, que adentro no anda. Si además el QR
+  // apunta a un piso con plano cargado, lo activamos automáticamente.
+  // ---------------------------------------------------------------
+  function applyQrCheckIn() {
+    const params = new URLSearchParams(window.location.search);
+    const refId = params.get("ref");
+    if (!refId) return false;
+    const ref = QR_REFS.find(r => r.id === refId);
+    if (!ref) return false;
+    qrRef = ref;
+
+    userLatLng = { lat: ref.lat, lng: ref.lng };
+    if (!userMarker) {
+      userMarker = L.marker([ref.lat, ref.lng], { icon: userIcon(pistaMode), zIndexOffset: 1000 }).addTo(map);
+    } else {
+      userMarker.setLatLng([ref.lat, ref.lng]);
+    }
+    if (accuracyCircle) { map.removeLayer(accuracyCircle); accuracyCircle = null; }
+
+    const badge = document.getElementById("accBadge");
+    badge.classList.add("show");
+    badge.classList.remove("warn");
+    badge.textContent = "📌 Ubicación por QR: " + ref.label;
+
+    if (ref.floor) setFloor(ref.floor);
+    map.setView([ref.lat, ref.lng], 19);
+    renderList();
+    return true;
+  }
+
+  const checkedInByQr = applyQrCheckIn();
+  // Si no vino de un QR, seguimos con el GPS normal como hasta ahora.
+  if (!checkedInByQr) startWatch();
+
+  // ---------------------------------------------------------------
+  // MODO PISTA — dibuja el trayecto como línea de pista punteada
+  // ---------------------------------------------------------------
+  function clearRoutes() {
+    Object.values(routeLines).forEach(layers => layers.forEach(l => map.removeLayer(l)));
+    for (const k in routeLines) delete routeLines[k];
+  }
+
+  function drawRoute(poi) {
+    clearRoutes();
+    if (!userLatLng) return;
+    const path = [userLatLng];
+    if (poi.via) poi.via.forEach(v => path.push(v));
+    path.push({ lat: poi.lat, lng: poi.lng });
+
+    const latlngs = path.map(p => [p.lat, p.lng]);
+    const layers = [];
+
+    if (pistaMode) {
+      // Franja de asfalto (base ancha) + línea central de pista punteada
+      layers.push(L.polyline(latlngs, {
+        color: "#2b2f36", weight: 16, opacity: 0.9, lineCap: "round", lineJoin: "round"
+      }).addTo(map));
+      layers.push(L.polyline(latlngs, {
+        color: "#3a3f47", weight: 12, opacity: 0.9, lineCap: "round", lineJoin: "round"
+      }).addTo(map));
+      layers.push(L.polyline(latlngs, {
+        color: "#ffffff", weight: 3, dashArray: "16 14", opacity: 0.95, lineCap: "round"
+      }).addTo(map));
+    } else {
+      layers.push(L.polyline(latlngs, {
+        color: "#2e6db4", weight: 3, dashArray: "6 8", lineCap: "round"
+      }).addTo(map));
+    }
+    routeLines[poi.id] = layers;
+  }
+
+  document.getElementById("pistaBtn").addEventListener("click", () => {
+    pistaMode = !pistaMode;
+    document.getElementById("pistaBtn").classList.toggle("active", pistaMode);
+        POIS.forEach(poi => poiMarkers[poi.id].setIcon(poiIcon(poi, pistaMode)));
+    if (userMarker) userMarker.setIcon(userIcon(pistaMode));
+    if (selectedId) drawRoute(POIS.find(p => p.id === selectedId));
+    mostrarToast(pistaMode
+      ? "✈️ Modo pista: tu ubicación se ve como un avioncito, los lugares en dorado y la línea hacia cada lugar, como una pista."
+      : "Modo normal.", 5200);
+  });
+
+  // ---------------------------------------------------------------
+  // GEOLOCALIZACIÓN EN VIVO
+  // ---------------------------------------------------------------
+  function userIcon(plane) {
+    return L.divIcon({
+      className: "",
+      html: plane ? '<div class="divicon-user plane">✈️</div>' : '<div class="mono"><svg viewBox="0 0 40 52"><ellipse cx="20" cy="49" rx="11" ry="2.8" fill="rgba(13,43,78,0.28)"/><path d="M8.5 45 C8.5 32 12.5 25 20 25 C27.5 25 31.5 32 31.5 45 C31.5 46.4 30.4 47.5 29 47.5 L11 47.5 C9.6 47.5 8.5 46.4 8.5 45 Z" fill="#2e6db4" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/><circle cx="20" cy="13" r="9.5" fill="#2e6db4" stroke="#ffffff" stroke-width="3"/></svg></div>',
+      iconSize: plane ? [30, 30] : [36, 48],
+      iconAnchor: plane ? [15, 15] : [18, 45]
+    });
+  }
+
+
+  function updateUserPosition(lat, lng, accuracy) {
+    gpsFix = { lat, lng, accuracy };
+    if (manualMode) return;               // si marcó el punto a mano, el GPS no lo mueve
+    userLatLng = { lat, lng };
+    if (!userMarker) {
+      userMarker = L.marker([lat, lng], {
+        icon: userIcon(pistaMode),
+        zIndexOffset: 1000
+      }).addTo(map);
+    } else {
+      userMarker.setLatLng([lat, lng]);
+    }
+    if (!accuracyCircle) {
+      accuracyCircle = L.circle([lat, lng], { radius: accuracy, color: "#2e6db4", weight: 1, fillOpacity: 0.08 }).addTo(map);
+    } else {
+      accuracyCircle.setLatLng([lat, lng]);
+      accuracyCircle.setRadius(accuracy);
+    }
+    updateAccBadge(accuracy);
+    revisarInterior(lat, lng);
+    renderList();
+    if (selectedId) drawRoute(POIS.find(p => p.id === selectedId));
+  }
+
+  const ACC_WARN_THRESHOLD = 25; // metros — a partir de acá avisamos que la precisión es baja
+  function updateAccBadge(accuracy) {
+    const badge = document.getElementById("accBadge");
+    const bad = accuracy > ACC_WARN_THRESHOLD;
+    badge.classList.add("show");
+    badge.classList.toggle("warn", bad);
+    badge.textContent = bad
+      ? "📶 Precisión baja (±" + Math.round(accuracy) + " m) — típico en interiores"
+      : "📍 ±" + Math.round(accuracy) + " m";
+  }
+
+  function startWatch() {
+    if (!navigator.geolocation || vigilando) return;
+    vigilando = true;
+    navigator.geolocation.watchPosition(
+      pos => updateUserPosition(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy || 15),
+      err => console.warn("Geolocalización no disponible:", err.message),
+      { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
+    );
+  }
+
+  // ---------------------------------------------------------------
+  // PUNTO DE PARTIDA A MANO — la personita se ubica donde la persona toca
+  // (adentro de los edificios el GPS suele fallar o correrse varios metros)
+  // ---------------------------------------------------------------
+  const locMenu = document.getElementById("locMenu"), locHint = document.getElementById("locHint");
+  const toastEl = document.getElementById("toastMsg");
+  let toastTimer = null;
+  function mostrarToast(txt, ms) {
+    toastEl.textContent = txt; toastEl.classList.add("show");
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => toastEl.classList.remove("show"), ms || 4500);
+  }
+  function ocultarHint() { locHint.classList.remove("show"); }
+  setTimeout(() => { if (!manualMode) locHint.classList.add("show"); }, 1500);
+  setTimeout(ocultarHint, 10000);
+
+  document.getElementById("locateBtn").addEventListener("click", e => {
+    e.stopPropagation(); ocultarHint();
+    document.getElementById("locGps").style.display = manualMode ? "flex" : "none";
+    locMenu.classList.toggle("show");
+  });
+  document.addEventListener("click", e => { if (!locMenu.contains(e.target)) locMenu.classList.remove("show"); });
+
+  document.getElementById("locIr").addEventListener("click", () => {
+    locMenu.classList.remove("show");
+    if (userLatLng) map.flyTo([userLatLng.lat, userLatLng.lng], 19, { duration: 0.6 });
+    else { startWatch(); mostrarToast("Todavía no tengo tu ubicación. Si estás adentro de un edificio, probá marcar tu punto de partida a mano.", 6000); }
+  });
+  document.getElementById("locManual").addEventListener("click", () => { locMenu.classList.remove("show"); entrarModoColocar(); });
+  document.getElementById("locGps").addEventListener("click", () => { locMenu.classList.remove("show"); usarGPS(); });
+
+  function entrarModoColocar() {
+    colocando = true;
+    document.getElementById("avisoInterior").classList.remove("show");
+    document.getElementById("colocarBanner").classList.add("show");
+    document.getElementById("map").classList.add("colocando");
+    setSheetCollapsed(true);
+  }
+  function salirModoColocar() {
+    colocando = false;
+    document.getElementById("colocarBanner").classList.remove("show");
+    document.getElementById("map").classList.remove("colocando");
+  }
+  document.getElementById("colocarCancelar").addEventListener("click", salirModoColocar);
+
+  function colocarPunto(latlng) {
+    salirModoColocar();
+    manualMode = true; qrRef = null;
+    startFloor = (typeof activeFloor !== "undefined" && activeFloor) ? activeFloor : "pb";
+    userLatLng = { lat: latlng.lat, lng: latlng.lng };
+    if (!userMarker) {
+      userMarker = L.marker(latlng, { icon: userIcon(pistaMode), zIndexOffset: 1000, draggable: true }).addTo(map);
+    } else {
+      userMarker.setLatLng(latlng);
+      if (userMarker.dragging) userMarker.dragging.enable();
+    }
+    userMarker.off("dragend");
+    userMarker.on("dragend", () => {
+      const q = userMarker.getLatLng(); userLatLng = { lat: q.lat, lng: q.lng };
+      renderList(); if (selectedId) drawRoute(POIS.find(p => p.id === selectedId));
+    });
+    userMarker.unbindTooltip();
+    userMarker.bindTooltip("Tu punto de partida", { permanent: true, direction: "top", offset: [0, -46], className: "tipPartida" }).openTooltip();
+    if (accuracyCircle) { map.removeLayer(accuracyCircle); accuracyCircle = null; }
+    const badge = document.getElementById("accBadge");
+    badge.classList.add("show"); badge.classList.remove("warn"); badge.textContent = "📌 Punto de partida marcado a mano";
+    navPreferGps = true;
+    renderList(); if (selectedId) drawRoute(POIS.find(p => p.id === selectedId));
+    mostrarToast("Listo. Podés arrastrar la personita para ajustarla. En 🧭 el origen queda como «Donde marqué mi punto de partida».", 6500);
+  }
+
+  function usarGPS() {
+    manualMode = false; salirModoColocar();
+    if (userMarker) { userMarker.unbindTooltip(); if (userMarker.dragging) userMarker.dragging.disable(); }
+    if (gpsFix) {
+      updateUserPosition(gpsFix.lat, gpsFix.lng, gpsFix.accuracy);
+      mostrarToast("Volví a usar el GPS.", 3500);
+    } else {
+      if (userMarker) { map.removeLayer(userMarker); userMarker = null; }
+      userLatLng = null; document.getElementById("accBadge").classList.remove("show");
+      startWatch(); mostrarToast("Esperando la señal del GPS…", 3500);
+    }
+  }
+
+  // ----- aviso cuando el GPS lo ubica adentro de un edificio -----
+  function paramEnEsquinas(c, lat, lng) {
+    const a11 = c.topRight.lat - c.topLeft.lat, a12 = c.bottomLeft.lat - c.topLeft.lat;
+    const a21 = c.topRight.lng - c.topLeft.lng, a22 = c.bottomLeft.lng - c.topLeft.lng;
+    const det = a11 * a22 - a12 * a21, dl = lat - c.topLeft.lat, dg = lng - c.topLeft.lng;
+    return [(dl * a22 - a12 * dg) / det, (a11 * dg - a21 * dl) / det];
+  }
+  function dentroDeEdificio(lat, lng) {
+    const px = navLatLngToPx(lat, lng);
+    const en = (x0, y0, x1, y1) => px[0] >= x0 && px[0] <= x1 && px[1] >= y0 && px[1] <= y1;
+    if (en(377, 18, 893, 1806) || en(32, 1806, 1413, 2358)) return "edificio principal";
+    const nombres = { dgia: "edificio del DGIA", rnapers: "edificio de Personal Aeronáutico y del Registro Nacional de Aeronaves" };
+    for (const bd of BUILDINGS) {
+      const uv = paramEnEsquinas(bd.corners, lat, lng);
+      if (uv[0] >= 0 && uv[0] <= 1 && uv[1] >= 0 && uv[1] <= 1) return nombres[bd.id] || "edificio";
+    }
+    return null;
+  }
+  function revisarInterior(lat, lng) {
+    const aviso = document.getElementById("avisoInterior");
+    const donde = dentroDeEdificio(lat, lng);
+    if (!donde) { avisoInteriorVisto = false; aviso.classList.remove("show"); return; }
+    if (avisoInteriorVisto || manualMode || colocando) return;
+    avisoInteriorVisto = true;
+    document.getElementById("avisoTxt").innerHTML = "<b>Parece que estás adentro del " + donde + ".</b> Adentro de los edificios la ubicación a veces es difícil de tomar para el celular y puede marcar corrida varios metros. Te recomiendo agregar tu punto de partida a mano.";
+    aviso.classList.add("show");
+  }
+  document.getElementById("avisoSigue").addEventListener("click", () => document.getElementById("avisoInterior").classList.remove("show"));
+  document.getElementById("avisoMarcar").addEventListener("click", entrarModoColocar);
+
+  renderList();
+
+  // ---------------------------------------------------------------
+  // SOMBRAS DE AVIONES — siluetas suaves que cruzan la pantalla de vez en
+  // cuando, como si pasaran volando por arriba. Van solas, sin botón
+  // (solo se apagan si el celular tiene activado "reducir movimiento").
+  // ---------------------------------------------------------------
+  const sombrasEl = document.getElementById("sombras");
+  const SOMBRA_SVG = '<svg viewBox="0 0 100 100"><rect x="44" y="4" width="12" height="90" rx="6"/><polygon points="50,36 97,66 97,75 50,58 3,75 3,66"/><polygon points="50,80 68,95 68,101 50,95 32,101 32,95"/></svg>';
+  const sinMovimiento = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  const sombrasOn = !sinMovimiento;
+
+  function lanzarSombra() {
+    if (!sombrasEl.animate) return;
+    const W = window.innerWidth, H = window.innerHeight;
+    const size = 70 + Math.random() * 90;                       // tamaño de la silueta
+    const ang = Math.random() * 2 * Math.PI;                    // rumbo al azar
+    const dx = Math.cos(ang), dy = Math.sin(ang);
+    const diag = Math.hypot(W, H) + size * 2;
+    const off = (Math.random() - 0.5) * Math.min(W, H) * 0.9;   // por dónde cruza
+    const cx = W / 2 - dy * off, cy = H / 2 + dx * off;
+    const pos = t => "translate(" + (cx + dx * diag * (t - 0.5) - size / 2) + "px," + (cy + dy * diag * (t - 0.5) - size / 2) + "px) rotate(" + (Math.atan2(dx, -dy) * 180 / Math.PI) + "deg)";
+    const dur = diag / (45 + Math.random() * 35) * 1000;        // 45 a 80 px por segundo
+    const el = document.createElement("div");
+    el.className = "sombra"; el.style.width = el.style.height = size + "px"; el.innerHTML = SOMBRA_SVG;
+    sombrasEl.appendChild(el);
+    const an = el.animate([
+      { transform: pos(0),    opacity: 0 },
+      { transform: pos(0.08), opacity: 0.17, offset: 0.08 },
+      { transform: pos(0.92), opacity: 0.17, offset: 0.92 },
+      { transform: pos(1),    opacity: 0 }
+    ], { duration: dur, easing: "linear" });
+    an.onfinish = () => el.remove();
+  }
+  function programarSombra(espera) {
+    setTimeout(() => {
+      if (sombrasOn && !document.hidden && sombrasEl.children.length < 2) lanzarSombra();
+      programarSombra(9000 + Math.random() * 14000);
+    }, espera);
+  }
+  programarSombra(2500);                                         // la primera aparece enseguida
+
+  // ---------------------------------------------------------------
+  // CÓMO LLEGAR — recorrido por dentro del edificio, por los caminos de
+  // afuera y por dentro del DGIA.
+  // Los puntos del edificio principal están en píxeles del plano (mismo marco
+  // para PB y 1er piso). Los de afuera y los del DGIA, en coordenadas reales.
+  // El camino más corto se calcula solo; si el destino está en otro piso,
+  // elige la escalera que conviene y la guía sigue arriba.
+  // ---------------------------------------------------------------
+  const NAV_MPP = 0.03364;                       // metros por píxel del plano
+  const NAV_FLOOR = { pb: "la planta baja", p1: "el 1er piso" };
+  const NAV_FLOOR_TXT = { pb: "Planta baja", p1: "1er piso", ext: "Afuera, por el camino", dgia: "Adentro del DGIA" };
+  // id: [zona, x, y]  (zona pb/p1: x,y en píxeles del plano · zona ext/dgia: latitud, longitud)
+  const NAVN = {
+    ent:      ["pb", 810, 2352],
+    hall_a:   ["pb", 810, 2200],
+    hall_c:   ["pb", 732, 2030],
+    hall_m:   ["pb", 683, 1921],
+    hall_n:   ["pb", 655, 1860],
+    c_e2:     ["pb", 655, 1772],
+    c_d3:     ["pb", 655, 1729],
+    c_tes:    ["pb", 655, 1461],
+    c_e1:     ["pb", 655, 1010],
+    c_d2:     ["pb", 655, 954],
+    c_d1:     ["pb", 655, 211],
+    dn_door:  ["pb", 720, 190],
+    dn:       ["pb", 774, 110],
+    tes:      ["pb", 770, 1461],
+    esc2:     ["pb", 545, 1772],
+    esc1:     ["pb", 545, 1010],
+    mesa:     ["pb", 885, 1921],
+    p_lat:    ["pb", 893, 1764],
+    aud_door: ["pb", 957, 2260],
+    aud:      ["pb", 1100, 2260],
+    gate:     ["pb", 625, 2057],
+    sde_a:    ["pb", 560, 2057],
+    sde_mirta:["pb", 512, 2057],
+    mirta_door:["pb", 512, 2007],
+    mirta:    ["pb", 512, 1906],
+    sde_c:    ["pb", 350, 2057],
+    sde_dgac: ["pb", 190, 2057],
+    dgac_door:["pb", 190, 2107],
+    dgac:     ["pb", 190, 2233],
+    sde_dgs:  ["pb", 150, 2057],
+    dgs_door: ["pb", 150, 2007],
+    dgs:      ["pb", 150, 1906],
+    esc2p:    ["p1", 545, 1772],
+    esc1p:    ["p1", 545, 1010],
+    c1_e1:    ["p1", 612, 1010],
+    c1_e2:    ["p1", 612, 1772],
+    p1_a:     ["p1", 612, 2057],
+    oaci_s:   ["p1", 512, 2057],
+    oaci_door:["p1", 512, 2007],
+    oaci:     ["p1", 512, 1906],
+    ase_s:    ["p1", 488, 2057],
+    ase_door: ["p1", 488, 2107],
+    ase:      ["p1", 488, 2233],
+    p1_c:     ["p1", 350, 2057],
+    daf_s:    ["p1", 190, 2057],
+    daf_door: ["p1", 190, 2107],
+    daf:      ["p1", 190, 2233],
+    c0: ["ext", -34.8461811, -56.0286833],
+    c1: ["ext", -34.8461976, -56.0286952],
+    c2: ["ext", -34.8462241, -56.0287193],
+    c3: ["ext", -34.8462506, -56.0287452],
+    c4: ["ext", -34.8462770, -56.0287706],
+    c5: ["ext", -34.8463035, -56.0287986],
+    c6: ["ext", -34.8463300, -56.0288267],
+    c7: ["ext", -34.8463564, -56.0288533],
+    c8: ["ext", -34.8463829, -56.0288762],
+    c9: ["ext", -34.8464094, -56.0288956],
+    c10: ["ext", -34.8464358, -56.0289181],
+    c11: ["ext", -34.8464623, -56.0289476],
+    c12: ["ext", -34.8464887, -56.0289863],
+    c13: ["ext", -34.8465010, -56.0290053],
+    b1: ["ext", -34.8462458, -56.0287848],
+    b2: ["ext", -34.8461956, -56.0288097],
+    b3: ["ext", -34.8461443, -56.0288304],
+    b4: ["ext", -34.8460935, -56.0288532],
+    b5: ["ext", -34.8460525, -56.0288763],
+    b6: ["ext", -34.8460437, -56.0288919],
+    d_door: ["dgia", -34.8460470, -56.0289057],
+    d_in: ["dgia", -34.8460557, -56.0289310],
+    d_mid: ["dgia", -34.8460622, -56.0289712],
+    d_off: ["dgia", -34.8460394, -56.0290352],
+    w0: ["ext", -34.8461688, -56.0286567],
+    w1: ["ext", -34.8461350, -56.0286252],
+    w2: ["ext", -34.8460909, -56.0285769],
+    w3: ["ext", -34.8460769, -56.0285529],
+    w4: ["ext", -34.8460658, -56.0285143],
+    w5: ["ext", -34.8460657, -56.0284805],
+    w6: ["ext", -34.8460529, -56.0284270],
+    pers_out: ["ext", -34.8460378, -56.0283867],
+    w7: ["ext", -34.8460209, -56.0283303],
+    w8: ["ext", -34.8460109, -56.0282820],
+    r_out: ["ext", -34.8459962, -56.0282388],
+    pers_door: ["ext", -34.8460481, -56.0283823],
+    r_door: ["ext", -34.8459932, -56.0282318]
+  };
+  const NAV_GEO = new Set(["c0","c1","c2","c3","c4","c5","c6","c7","c8","c9","c10","c11","c12","c13","b1","b2","b3","b4","b5","b6","d_door","d_in","d_mid","d_off","w0","w1","w2","w3","w4","w5","w6","pers_out","w7","w8","r_out","pers_door","r_door"]);
+  const NAV_EDGES = [
+    ["ent","hall_a"],["hall_a","hall_c"],["hall_c","hall_m"],["hall_m","hall_n"],["hall_n","c_e2"],["c_e2","c_d3"],
+    ["c_d3","c_tes"],["c_tes","c_e1"],["c_e1","c_d2"],["c_d2","c_d1"],["c_d1","dn_door"],["dn_door","dn"],
+    ["c_e2","esc2"],["c_e1","esc1"],["c_tes","tes"],["hall_m","mesa"],["hall_c","gate"],["gate","sde_a"],
+    ["sde_a","sde_mirta"],["sde_mirta","mirta_door"],["mirta_door","mirta"],["sde_mirta","sde_c"],["sde_c","sde_dgac"],
+    ["sde_dgac","dgac_door"],["dgac_door","dgac"],["sde_dgac","sde_dgs"],["sde_dgs","dgs_door"],["dgs_door","dgs"],
+    ["hall_a","aud_door"],["aud_door","aud"],
+    ["esc1p","c1_e1"],["c1_e1","c1_e2"],["esc2p","c1_e2"],["c1_e2","p1_a"],["p1_a","oaci_s"],["oaci_s","oaci_door"],
+    ["oaci_door","oaci"],["oaci_s","ase_s"],["ase_s","ase_door"],["ase_door","ase"],["ase_s","p1_c"],["p1_c","daf_s"],
+    ["daf_s","daf_door"],["daf_door","daf"],
+    // puerta lateral -> camino -> DGIA (el camino de afuera y su ramal pegado al muro este del DGIA)
+    ["c_e2","p_lat"],["p_lat","c13"],
+    ["c0","c1"],["c1","c2"],["c2","c3"],["c3","c4"],["c4","c5"],["c5","c6"],
+    ["c6","c7"],["c7","c8"],["c8","c9"],["c9","c10"],["c10","c11"],["c11","c12"],
+    ["c12","c13"],["c4","b1"],["b1","b2"],["b2","b3"],["b3","b4"],["b4","b5"],
+    ["b5","b6"],["b6","d_door"],["d_door","d_in"],["d_in","d_mid"],["d_mid","d_off"],
+    // camino de la calle oeste, pegado al muro norte de Personal Aeronáutico, hasta la puerta del RNA
+    ["c0","w0"],["w0","w1"],["w1","w2"],["w2","w3"],["w3","w4"],["w4","w5"],["w5","w6"],["w6","pers_out"],
+    ["pers_out","w7"],["w7","w8"],["w8","r_out"],["r_out","r_door"],["pers_out","pers_door"]
+  ];
+  const NAV_STAIRS = [["esc1","esc1p",250 * NAV_MPP],["esc2","esc2p",250 * NAV_MPP]]; // costo extra de subir/bajar, en metros
+  const NAV_PLACES = [
+    { id: "dn",   name: "Director Nacional", sub: "Despacho, al fondo del pasillo", floor: "pb", node: "dn" },
+    { id: "dgac", name: "DGAC", sub: "Dirección General de Aviación Civil", floor: "pb", node: "dgac" },
+    { id: "dsec", name: "Director de Secretaría", sub: "Frente al DGAC, sobre la Sala de espera", floor: "pb", node: "dgs" },
+    { id: "tes",  name: "Tesorería", sub: "Sobre el pasillo principal", floor: "pb", node: "tes" },
+    { id: "mesa", name: "Mesa de entrada", sub: "Reguladora de Trámites", floor: "pb", node: "mesa" },
+    { id: "mirta",name: "Sala Mirta Vanni de Barbot", sub: "Sala de reuniones", floor: "pb", node: "mirta" },
+    { id: "aud",  name: "Auditorio Mario García Cames", sub: "Al fondo a la derecha del hall", floor: "pb", node: "aud" },
+    { id: "daf",  name: "Director de Administración y Finanzas", sub: "Se llega por la escalera", floor: "p1", node: "daf" },
+    { id: "ase",  name: "Asesoría Jurídica y Junta de Infracciones", sub: "Sobre el pasillo del ala", floor: "p1", node: "ase" },
+    { id: "dgia", name: "DGIA", sub: "Dirección General de Infraestructura Aeronáutica · por el camino de afuera", floor: "dgia", node: "d_off" },
+    { id: "pers", name: "Personal Aeronáutico", sub: "Puerta de doble hoja sobre el muro norte · por el camino de afuera", floor: "dgia", node: "pers_door" },
+    { id: "rna", name: "Registro Nacional de Aeronaves", sub: "Puerta del lado oeste, al final de la pasarela · por el camino de afuera", floor: "dgia", node: "r_door" }
+  ];
+
+  // Textos que dependen de por dónde venís (así la guía sirve en los dos sentidos)
+  const NAV_DOORS = ["c_d3", "c_d2", "c_d1"];
+  const NAV_ORD = ["primera", "segunda", "tercera"];
+  const NAV_SAY = {
+    hall_n: [{ from: "hall_m", text: "Seguí derecho hacia el pasillo principal, por la puerta vidriada del fondo del hall." },
+             { from: "c_e2", text: "Salí del pasillo hacia el Hall de Acceso." }],
+    gate:   [{ from: "hall_c", text: "Entrá a la Sala de espera: es el pasillo ancho a la izquierda del hall." },
+             { from: "sde_a", text: "Salí de la Sala de espera hacia el Hall de Acceso." }],
+    c1_e2:  [{ from: "esc2p", text: "Seguí por el pasillo hacia el ala de abajo." },
+             { from: "c1_e1", text: "Seguí por el pasillo hacia el ala de abajo." }],
+    d_in:   [{ from: "d_door", text: "Seguí derecho hacia el fondo del edificio: la oficina del DGIA es la de la esquina, a tu derecha." },
+             { from: "d_mid", text: "Seguí derecho hasta la puerta de salida, sobre el muro del lado este." }]
+  };
+  const NAV_TOWARD = {
+    "hall_a>aud_door": "hacia el Auditorio", "hall_c>gate": "hacia la Sala de espera (el pasillo ancho)",
+    "hall_m>mesa": "hacia la Mesa de entrada (la ventanilla)", "c_e2>esc2": "hacia la escalera", "c_e1>esc1": "hacia la escalera",
+    "c_tes>tes": "hacia Tesorería", "c_d1>dn_door": "hacia el despacho del Director Nacional",
+    "sde_mirta>mirta_door": "hacia la Sala Mirta Vanni de Barbot", "sde_dgac>dgac_door": "hacia el DGAC",
+    "sde_dgs>dgs_door": "hacia la oficina del Director de Secretaría", "p1_a>oaci_s": "y seguí por el pasillo del ala",
+    "oaci_s>oaci_door": "hacia OACI / Biblioteca Técnica", "ase_s>ase_door": "hacia Asesoría Jurídica y Junta de Infracciones",
+    "daf_s>daf_door": "hacia la oficina del Director de Administración y Finanzas",
+    "c_e2>p_lat": "hacia la puerta lateral (la de la derecha, junto a la Mesa de entrada)",
+    "c4>b1": "por el camino que bordea el DGIA, pegado al muro del lado este",
+    "c4>c5": "por el camino, de vuelta hacia el edificio principal", "c4>c3": "por el camino, hacia la calle",
+    "d_mid>d_off": "hacia la oficina del DGIA"
+  };
+  const NAV_ARRIVE = {
+    pers_door: "Seguí pegado al muro norte del edificio largo hasta la puerta de vidrio de doble hoja (junto a la cámara).",
+    r_door: "Seguí por el camino pegado al muro norte, pasá la pasarela cubierta y llegá a la puerta del Registro Nacional de Aeronaves."
+  };
+  // cambios de zona que no son escaleras (puertas al exterior)
+  const NAV_TRANS = {
+    "p_lat>c13": "Salí por la puerta lateral y seguí el camino.",
+    "c13>p_lat": "Entrá por la puerta lateral al edificio.",
+    "b6>d_door": "Entrá al DGIA por la puerta (es de una sola hoja).",
+    "d_door>b6": "Salí del DGIA por la puerta y seguí el camino."
+  };
+
+  // ----- posiciones, distancias y giros (en metros) -----
+  const NAV_LAT0 = -34.8463, NAV_LNG0 = -56.0291, NAV_MLAT = 110938, NAV_MLNG = 91459;
+  function navLL(id) { const n = NAVN[id]; return NAV_GEO.has(id) ? [n[1], n[2]] : navPxToLatLng(n[1], n[2]); }
+  function navXY(id) { const n = NAVN[id]; return NAV_GEO.has(id) ? [(n[2] - NAV_LNG0) * NAV_MLNG, -(n[1] - NAV_LAT0) * NAV_MLAT] : [n[1], n[2]]; }
+  function navMeters(a, b) { const p = navLL(a), q = navLL(b); return Math.hypot((p[0]-q[0]) * NAV_MLAT, (p[1]-q[1]) * NAV_MLNG); }
+  function navGroup(f) { return f === "p1" ? "p1" : "pb"; }   // PB, el exterior y el DGIA se ven juntos (planta baja)
+
+  const NAV_ADJ = {};
+  function navEdge(a, b, extra) {
+    const w = extra !== undefined ? extra : navMeters(a, b);
+    (NAV_ADJ[a] = NAV_ADJ[a] || []).push([b, w]);
+    (NAV_ADJ[b] = NAV_ADJ[b] || []).push([a, w]);
+  }
+  NAV_EDGES.forEach(e => navEdge(e[0], e[1]));
+  NAV_STAIRS.forEach(e => navEdge(e[0], e[1], e[2]));
+
+  function navDijkstra(src) {
+    const dist = {}, prev = {}, done = {};
+    Object.keys(NAVN).forEach(k => { dist[k] = Infinity; });
+    dist[src] = 0;
+    for (let i = 0; i < Object.keys(NAVN).length; i++) {
+      let u = null;
+      for (const k in dist) if (!done[k] && (u === null || dist[k] < dist[u])) u = k;
+      if (u === null || dist[u] === Infinity) break;
+      done[u] = true;
+      (NAV_ADJ[u] || []).forEach(([v, w]) => { if (dist[u] + w < dist[v]) { dist[v] = dist[u] + w; prev[v] = u; } });
+    }
+    return { dist, prev };
+  }
+  function navPath(prev, dst) { const p = [dst]; while (prev[p[0]]) p.unshift(prev[p[0]]); return p; }
+  function navTurn(p, c, n) {
+    if (NAVN[p][0] !== NAVN[c][0] || NAVN[c][0] !== NAVN[n][0]) return null;
+    const a = navXY(p), b = navXY(c), d = navXY(n);
+    const h1 = [b[0]-a[0], b[1]-a[1]], h2 = [d[0]-b[0], d[1]-b[1]];
+    const ang = Math.atan2(h1[0]*h2[1] - h1[1]*h2[0], h1[0]*h2[0] + h1[1]*h2[1]) * 180 / Math.PI;
+    return Math.abs(ang) >= 40 ? (ang > 0 ? "derecha" : "izquierda") : null;
+  }
+  function navSegPoint(id, geo) {                 // punto del recorrido en el formato de su zona
+    const n = NAVN[id];
+    if (geo) return navLL(id);
+    return NAV_GEO.has(id) ? navLatLngToPx(n[1], n[2]) : [n[1], n[2]];
+  }
+  function navBuild(path, place, originNode) {
+    const steps = [];
+    const push = (f, t) => { if (!steps.length || steps[steps.length-1].text !== t) steps.push({ f: f, text: t }); };
+    if (path[0] === "ent") push("pb", "Entrá por la puerta de ingreso: estás en el Hall de Acceso.");
+    else push(NAVN[path[0]][0], "Empezás " + (navOriginLabel || "acá") + ".");
+    let puertas = 0;
+    for (let i = 1; i < path.length - 1; i++) {
+      const id = path[i], n = NAVN[id], nx = NAVN[path[i+1]], pv = NAVN[path[i-1]];
+      if (n[0] !== nx[0]) {
+        if (navGroup(n[0]) !== navGroup(nx[0])) push(n[0], (n[0] === "pb" ? "Subí" : "Bajá") + " por la escalera hasta " + NAV_FLOOR[nx[0]] + ".");
+        else { const t = NAV_TRANS[id + ">" + path[i+1]]; if (t) push(n[0], t); }
+        continue;
+      }
+      if (pv[0] !== n[0]) continue;
+      const side = navTurn(path[i-1], id, path[i+1]);
+      const say = (NAV_SAY[id] || []).find(s => s.from === path[i-1]);
+      const toward = NAV_TOWARD[id + ">" + path[i+1]];
+      const esPuerta = NAV_DOORS.indexOf(id) >= 0;
+      const textoPuerta = "Cruzá la " + NAV_ORD[Math.min(puertas, 2)] + " puerta vidriada" + (puertas >= 2 ? " (la última)" : "") + ".";
+      const girarAntes = esPuerta && side && NAVN[path[i-1]][1] !== 655;   // si venís de un despacho, primero girás y después cruzás
+      if (esPuerta && !girarAntes) { push(n[0], textoPuerta); }
+      if (side) push(n[0], "Girá a la " + side + (toward ? " " + toward : "") + "." + (say ? " " + say.text : ""));
+      else if (say) push(n[0], say.text);
+      if (esPuerta && girarAntes) { push(n[0], textoPuerta); }
+      if (esPuerta) puertas++;
+    }
+    const llega = NAV_ARRIVE[path[path.length-1]];
+    if (llega) push(NAVN[path[path.length-1]][0], llega);
+    push(NAVN[path[path.length-1]][0], "Llegaste: " + place.name + ".");
+    let m = 0;
+    for (let i = 1; i < path.length; i++) m += navMeters(path[i-1], path[i]);
+    const segments = [];
+    path.forEach((id, i) => {
+      const n = NAVN[id];
+      let seg = segments[segments.length - 1];
+      if (!seg || seg.f !== n[0]) {
+        seg = { f: n[0], geo: NAV_GEO.has(id), pts: [] };
+        segments.push(seg);
+        if (i > 0 && navGroup(NAVN[path[i-1]][0]) === navGroup(n[0])) seg.pts.push(navSegPoint(path[i-1], seg.geo));   // sin cortes al cruzar una puerta
+      }
+      seg.pts.push(navSegPoint(id, seg.geo));
+    });
+    const usedStairs = segments.some((s, i) => i > 0 && navGroup(s.f) !== navGroup(segments[i-1].f));
+    return { steps, meters: Math.round(m), segments, usedStairs };
+  }
+
+  // ----- conversión plano <-> mapa real -----
+  function navCorners() { return FLOORS[0].corners; }
+  function navPxToLatLng(x, y) {
+    const c = navCorners(), W = FLOORS[0].size[0], H = FLOORS[0].size[1];
+    return [ c.topLeft.lat + (x/W)*(c.topRight.lat - c.topLeft.lat) + (y/H)*(c.bottomLeft.lat - c.topLeft.lat),
+             c.topLeft.lng + (x/W)*(c.topRight.lng - c.topLeft.lng) + (y/H)*(c.bottomLeft.lng - c.topLeft.lng) ];
+  }
+  function navLatLngToPx(lat, lng) {
+    const c = navCorners(), W = FLOORS[0].size[0], H = FLOORS[0].size[1];
+    const a11 = c.topRight.lat - c.topLeft.lat, a12 = c.bottomLeft.lat - c.topLeft.lat;
+    const a21 = c.topRight.lng - c.topLeft.lng, a22 = c.bottomLeft.lng - c.topLeft.lng;
+    const det = a11*a22 - a12*a21, dl = lat - c.topLeft.lat, dg = lng - c.topLeft.lng;
+    const u = (dl*a22 - a12*dg) / det, v = (a11*dg - a21*dl) / det;
+    return [u * W, v * H];
+  }
+
+  // ----- origen -----
+  let navOrigin = "ent", navOriginLabel = "en la puerta de ingreso";
+  function navNearest(floor, x, y) {
+    let best = null, bd = Infinity;
+    Object.keys(NAVN).forEach(id => { const n = NAVN[id]; if (n[0] !== floor) return; const d = Math.hypot(n[1]-x, n[2]-y); if (d < bd) { bd = d; best = id; } });
+    return best;
+  }
+  function navResolveOrigin() {
+    const sel = document.getElementById("navFrom").value;
+    if (sel !== "gps") { navOriginLabel = sel === "ent" ? "en la puerta de ingreso" : "en " + (NAV_PLACES.find(p => p.node === sel) || {}).name; return sel; }
+    if (!userLatLng) { navOriginLabel = "en la puerta de ingreso (todavía no tengo tu ubicación)"; return "ent"; }
+    const px = navLatLngToPx(userLatLng.lat, userLatLng.lng), W = FLOORS[0].size[0], H = FLOORS[0].size[1];
+    if (px[0] >= -60 && px[0] <= W + 60 && px[1] >= -60 && px[1] <= H + 60) {
+      const floor = (qrRef && qrRef.floor) || (manualMode ? startFloor : "pb");
+      navOriginLabel = manualMode ? "donde marcaste tu punto de partida" : "donde estás (aprox.)";
+      return navNearest(floor, px[0], px[1]);
+    }
+    // afuera del edificio principal: ¿estás cerca del camino o dentro del DGIA?
+    let best = null, bd = Infinity;
+    NAV_GEO.forEach(id => { const ll = navLL(id); const d = Math.hypot((userLatLng.lat - ll[0]) * NAV_MLAT, (userLatLng.lng - ll[1]) * NAV_MLNG); if (d < bd) { bd = d; best = id; } });
+    if (best && bd < 60) { navOriginLabel = manualMode ? "donde marcaste tu punto de partida" : "donde estás (aprox.)"; return best; }
+    navOriginLabel = "en la puerta de ingreso (parece que estás afuera)";
+    return "ent";
+  }
+
+  // ----- ruta en el mapa y en el plano -----
+  function navFloorOfRoute() { return currentRoute ? navGroup(currentRoute.segments[0].f) : null; }
+  function navSegLatLngs(seg) { return seg.geo ? seg.pts : seg.pts.map(p => navPxToLatLng(p[0], p[1])); }
+  function renderRoute() {
+    if (!routeLayer) return;
+    routeLayer.clearLayers();
+    if (!currentRoute) return;
+    const g = navGroup(activeFloor || "pb"), segs = currentRoute.segments;
+    segs.forEach((seg, i) => {
+      if (navGroup(seg.f) !== g) return;
+      const ll = navSegLatLngs(seg);
+      L.polyline(ll, { color: "#ffffff", weight: 10, opacity: 0.95, lineCap: "round", lineJoin: "round", interactive: false }).addTo(routeLayer);
+      L.polyline(ll, { color: "#ff7a00", weight: 5, opacity: 1, lineCap: "round", lineJoin: "round", interactive: false }).addTo(routeLayer);
+      const prev = segs[i-1], next = segs[i+1];
+      const empiezaEscalera = prev && navGroup(prev.f) !== g, terminaEscalera = next && navGroup(next.f) !== g;
+      if (i === 0 || empiezaEscalera)
+        L.circleMarker(ll[0], { radius: i === 0 ? 7 : 8, color: "#fff", weight: 3, fillColor: i === 0 ? "#2e6db4" : "#ff7a00", fillOpacity: 1, interactive: false }).addTo(routeLayer);
+      if (i === segs.length - 1 || terminaEscalera)
+        L.circleMarker(ll[ll.length-1], { radius: 9, color: "#fff", weight: 3, fillColor: i === segs.length - 1 ? "#e53935" : "#ff7a00", fillOpacity: 1, interactive: false }).addTo(routeLayer);
+    });
+  }
+  function navLightboxRoute(floor) {
+    if (!currentRoute || !floor) return null;
+    const NS = "http://www.w3.org/2000/svg", W = floor.size[0], H = floor.size[1];
+    const svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+    svg.style.cssText = "position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;border-radius:10px";
+    currentRoute.segments.forEach((seg, i) => {
+      if (seg.f !== floor.id || seg.geo) return;
+      const pts = seg.pts.map(p => p.join(",")).join(" ");
+      [["#ffffff", 26], ["#ff7a00", 14]].forEach(([c, w]) => {
+        const pl = document.createElementNS(NS, "polyline");
+        pl.setAttribute("points", pts); pl.setAttribute("fill", "none"); pl.setAttribute("stroke", c);
+        pl.setAttribute("stroke-width", w); pl.setAttribute("stroke-linecap", "round"); pl.setAttribute("stroke-linejoin", "round");
+        svg.appendChild(pl);
+      });
+      const f0 = seg.pts[0], f1 = seg.pts[seg.pts.length-1], last = i === currentRoute.segments.length - 1;
+      [[f0, i === 0 ? "#2e6db4" : "#ff7a00", 22], [f1, last ? "#e53935" : "#ff7a00", 26]].forEach(([p, c, r]) => {
+        const ci = document.createElementNS(NS, "circle");
+        ci.setAttribute("cx", p[0]); ci.setAttribute("cy", p[1]); ci.setAttribute("r", r);
+        ci.setAttribute("fill", c); ci.setAttribute("stroke", "#fff"); ci.setAttribute("stroke-width", 7);
+        svg.appendChild(ci);
+      });
+    });
+    return svg;
+  }
+
+  // ----- panel -----
+  const navDrawer = document.getElementById("navDrawer"), navScrim = document.getElementById("navScrim");
+  const navListView = document.getElementById("navListView"), navRouteView = document.getElementById("navRouteView");
+  const routeChip = document.getElementById("routeChip");
+  function navOpen(show) { navDrawer.classList.toggle("open", show); navScrim.classList.toggle("show", show); if (show) navRenderList(); }
+  document.getElementById("navBtn").addEventListener("click", () => { navOpen(true); navListView.style.display = currentRoute ? "none" : "block"; navRouteView.style.display = currentRoute ? "block" : "none"; });
+  document.getElementById("navClose").addEventListener("click", () => navOpen(false));
+  navScrim.addEventListener("click", () => navOpen(false));
+
+  function navFillFrom() {
+    const sel = document.getElementById("navFrom");
+    const keep = sel.value;
+    sel.innerHTML = "";
+    const add = (v, t) => { const o = document.createElement("option"); o.value = v; o.textContent = t; sel.appendChild(o); };
+    add("ent", "Puerta de ingreso");
+    add("gps", userLatLng ? (manualMode ? "Donde marqué mi punto de partida" : "Donde estoy (aprox.)") : "Donde estoy (esperando ubicación…)");
+    NAV_PLACES.filter(p => p.floor === "pb" || p.floor === "dgia").forEach(p => add(p.node, p.name));
+    if (navPreferGps && userLatLng) { sel.value = "gps"; navPreferGps = false; }
+    else if (keep) sel.value = keep;
+  }
+  function navRenderList() {
+    navFillFrom();
+    const wrap = document.getElementById("navPlaces");
+    wrap.innerHTML = "";
+    const origin = navResolveOrigin(), { dist } = navDijkstra(origin);
+    [["pb", "Planta baja"], ["p1", "1er piso"], ["dgia", "Otros edificios"]].forEach(([f, label]) => {
+      const g = document.createElement("div"); g.className = "navGroup"; g.textContent = label; wrap.appendChild(g);
+      NAV_PLACES.filter(p => p.floor === f).forEach(p => {
+        const m = Math.round(dist[p.node] / 5) * 5;
+        const row = document.createElement("div"); row.className = "navPlace";
+        row.innerHTML = '<div class="t"><b>' + p.name + '</b><span>' + p.sub + '</span></div><div class="d">≈ ' + Math.max(m, 5) + ' m' + (f === "p1" ? "<br>por escalera" : "") + '</div>';
+        row.addEventListener("click", () => navGo(p));
+        wrap.appendChild(row);
+      });
+    });
+  }
+  document.getElementById("navFrom").addEventListener("change", navRenderList);
+
+  function navGo(place) {
+    const origin = navResolveOrigin();
+    if (origin === place.node) { alert("Ya estás ahí 🙂"); return; }
+    const { prev } = navDijkstra(origin), path = navPath(prev, place.node);
+    const r = navBuild(path, place, origin);
+    currentRoute = { place: place, segments: r.segments, steps: r.steps, meters: r.meters, usedStairs: r.usedStairs };
+    navShowRouteView();
+    navFocus(navGroup(currentRoute.segments[0].f));
+  }
+  function navShowRouteView() {
+    const r = currentRoute;
+    navListView.style.display = "none"; navRouteView.style.display = "block";
+    document.getElementById("navRouteTitle").textContent = r.place.name;
+    const min = Math.max(1, Math.round(r.meters / 70));
+    document.getElementById("navRouteMeta").textContent = "≈ " + r.meters + " m caminando · " + min + " min" + (r.usedStairs ? " · con escalera" : "") + " · desde " + navOriginLabel.replace(/^en /, "").replace(/^donde/, "donde");
+    const ol = document.getElementById("navSteps"); ol.innerHTML = "";
+    let lastF = null, n = 0;
+    r.steps.forEach(st => {
+      if (st.f !== lastF) { const h = document.createElement("li"); h.className = "piso"; h.textContent = NAV_FLOOR_TXT[st.f]; ol.appendChild(h); lastF = st.f; }
+      const li = document.createElement("li"); n++;
+      li.innerHTML = '<span class="n">' + n + '</span><span>' + st.text + '</span>';
+      ol.appendChild(li);
+    });
+    const floors = r.segments.map(s => navGroup(s.f)).filter((f, i, a) => a.indexOf(f) === i);
+    const bA = document.getElementById("navFloorA"), bB = document.getElementById("navFloorB");
+    [bA, bB].forEach((b, i) => { b.style.display = floors[i] ? "block" : "none"; if (floors[i]) { b.textContent = "Ver " + (floors[i] === "p1" ? "1er piso" : "planta baja"); b.onclick = () => { navOpen(false); navFocus(floors[i]); }; } });
+    document.getElementById("routeChipTxt").textContent = "➜ " + r.place.name + " · ≈ " + r.meters + " m";
+    routeChip.classList.add("show");
+  }
+  function navFocus(grupo) {
+    if (!routeLayer) routeLayer = L.layerGroup().addTo(map);
+    setFloor(grupo);
+    renderRoute();
+    const ll = [];
+    currentRoute.segments.forEach(seg => { if (navGroup(seg.f) === grupo) navSegLatLngs(seg).forEach(p => ll.push(p)); });
+    const b = L.latLngBounds(ll);
+    const z = Math.min(21, Math.max(19, map.getBoundsZoom(b.pad(0.25), false)));
+    map.setView(b.getCenter(), z);
+    setSheetCollapsed(true);
+  }
+  document.getElementById("navShow").addEventListener("click", () => { navOpen(false); navFocus(navFloorOfRoute()); });
+  document.getElementById("navBack").addEventListener("click", () => { currentRoute = null; renderRoute(); routeChip.classList.remove("show"); navListView.style.display = "block"; navRouteView.style.display = "none"; navRenderList(); });
+  document.getElementById("routeChipGo").addEventListener("click", () => { navOpen(true); navListView.style.display = "none"; navRouteView.style.display = "block"; });
+  document.getElementById("routeChipX").addEventListener("click", () => { currentRoute = null; renderRoute(); routeChip.classList.remove("show"); });
+  routeLayer = L.layerGroup().addTo(map);
+})();
+
+  // ---------------------------------------------------------------
+  // METAR de Carrasco (SUMU): la meteo de los pilotos, se actualiza sola
+  // ---------------------------------------------------------------
+  (function () {
+    const chip = document.getElementById("metarChip"), panel = document.getElementById("metarPanel"), dot = document.getElementById("metarDot");
+    const URL_METAR = "https://aviationweather.gov/api/data/metar?ids=SUMU&format=json";
+    const VIAS = [u => u, u => "https://api.allorigins.win/raw?url=" + encodeURIComponent(u), u => "https://corsproxy.io/?" + encodeURIComponent(u)];
+    let ultimo = null, fallo = false;
+    function conTiempo(url) {
+      const ac = new AbortController(), t = setTimeout(() => ac.abort(), 8000);
+      return fetch(url, { signal: ac.signal, cache: "no-store" }).then(r => { clearTimeout(t); if (!r.ok) throw new Error(r.status); return r.json(); });
+    }
+    async function pedir() {
+      for (const via of VIAS) {
+        try { const j = await conTiempo(via(URL_METAR)); if (Array.isArray(j) && j[0] && j[0].rawOb) return j[0]; } catch (e) {}
+      }
+      return null;
+    }
+    const PUNTOS = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSO","SO","OSO","O","ONO","NO","NNO"];
+    function viento(m) {
+      if (m.wspd === 0) return "calma";
+      const dir = typeof m.wdir === "number" ? PUNTOS[Math.round(m.wdir / 22.5) % 16] + " (" + m.wdir + "°)" : "variable";
+      return dir + " · " + m.wspd + " kt (" + Math.round(m.wspd * 1.852) + " km/h)" + (m.wgst ? ", ráfagas " + m.wgst + " kt" : "");
+    }
+    function cielo(m) {
+      const t = { CAVOK: "despejado (CAVOK)", SKC: "despejado", CLR: "despejado", FEW: "pocas nubes", SCT: "nubes dispersas", BKN: "nublado", OVC: "cubierto" };
+      return t[m.cover] || m.cover || "—";
+    }
+    function hace() { if (!ultimo) return ""; const min = Math.max(0, Math.round((Date.now() / 1000 - ultimo.obsTime) / 60)); return min < 90 ? "hace " + min + " min" : "hace " + Math.round(min / 60) + " h"; }
+    function pintar() {
+      if (!ultimo) { chip.classList.remove("show"); dot.className = "dot"; return; }
+      const m = ultimo;
+      chip.textContent = "METAR SUMU · " + Math.round(m.temp) + "°C · " + (m.wspd || 0) + " kt";
+      chip.classList.add("show");
+      dot.className = "dot " + String(m.fltCat || "").toLowerCase();
+      if (panel.classList.contains("show")) detalle();
+    }
+    function detalle() {
+      const m = ultimo; panel.textContent = "";
+      const h = document.createElement("h4"); h.textContent = "METAR · Carrasco (SUMU)"; panel.appendChild(h);
+      const filas = [["Temperatura", Math.round(m.temp) + " °C" + (m.dewp != null ? " (rocío " + Math.round(m.dewp) + " °C)" : "")], ["Viento", viento(m)], ["Cielo", cielo(m)], ["Visibilidad", m.visib ? m.visib + (/^\d/.test(String(m.visib)) ? " mi" : "") : "—"], ["QNH", m.altim ? Math.round(m.altim) + " hPa" : "—"], ["Condición", m.fltCat || "—"]];
+      filas.forEach(f => { const d = document.createElement("div"); const b = document.createElement("b"); b.textContent = f[0] + ": "; d.appendChild(b); d.appendChild(document.createTextNode(f[1])); panel.appendChild(d); });
+      const raw = document.createElement("div"); raw.className = "raw"; raw.textContent = m.rawOb; panel.appendChild(raw);
+      const sub = document.createElement("div"); sub.className = "sub"; sub.textContent = "Observación " + hace() + " · se actualiza sola (aviationweather.gov)" + (fallo ? " · no pude refrescarlo ahora" : ""); panel.appendChild(sub);
+    }
+    async function refrescar() {
+      const m = await pedir();
+      if (m) { ultimo = m; fallo = false; } else fallo = true;
+      pintar();
+    }
+    chip.addEventListener("click", e => { e.stopPropagation(); if (!ultimo) return; panel.classList.toggle("show"); if (panel.classList.contains("show")) detalle(); });
+    dot.addEventListener("click", () => chip.click());
+    document.addEventListener("click", e => { if (!panel.contains(e.target) && e.target !== chip) panel.classList.remove("show"); });
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) refrescar(); });
+    refrescar(); setInterval(refrescar, 10 * 60 * 1000);
+  })();
+</script>
+</body>
+</html>
